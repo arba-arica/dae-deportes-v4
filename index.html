@@ -973,12 +973,13 @@ async function cargarDashboard() {
         <div class="card" style="border-color: var(--warning);">
           <h3 style="color: var(--warning); margin-bottom: 8px;">📋 Tests de RM pendientes</h3>
           <p style="font-size: 12px; margin-bottom: 12px;">Completa los siguientes ejercicios:</p>
-          ${pendientes.map(t => `
-            <div class="exercise-card" onclick="iniciarTestRM('${t.Ejercicio_Nombre}')">
-              <div class="exercise-name">${t.Ejercicio_Nombre}</div>
-              <div class="exercise-meta">3 intentos · Encuentra tu RM</div>
-            </div>
-          `).join('')}
+          <div class="alert alert-warning" style="margin: 8px 0;">
+          <div>📋</div>
+          <div>Tienes ${pendientes.length} ejercicio(s) pendientes: ${pendientes.map(t => t.Ejercicio_Nombre).join(', ')}</div>
+        </div>
+        <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="abrirTestRMCompleto()">
+          📋 Completar Evaluación RM
+        </button>
         </div>
       `;
     }
@@ -991,61 +992,175 @@ async function cargarDashboard() {
 // RM TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let testRMState = { ejercicio: '', intento: 1 };
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEST RM — FORMULARIO ÚNICO (todos los ejercicios de una vez)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-function iniciarTestRM(ejercicio) {
-  testRMState = { ejercicio, intento: 1 };
-  pedirIntentoRM();
+const EJERCICIOS_RM = [
+  'Sentadilla',
+  'Prensa de Piernas',
+  'Press Banca',
+  'Jalón Polea Alta',
+  'Curl Tríceps',
+  'Curl Bíceps',
+];
+
+function brzycki(kg, reps) {
+  if (!kg || !reps || kg <= 0 || reps <= 0) return 0;
+  if (reps === 1) return Math.round(kg);
+  if (reps > 10) return Math.round(kg);
+  return Math.round(kg / (1.0278 - 0.0278 * reps));
 }
 
-function pedirIntentoRM() {
-  const { ejercicio, intento } = testRMState;
-  
-  if (intento > 3) {
-    // Finalizar test
-    finalizarTestRM();
-    return;
+function abrirTestRMCompleto() {
+  // Construir formulario completo
+  let html = '';
+  EJERCICIOS_RM.forEach((ej, idx) => {
+    html += `
+      <div class="card" id="rm-card-${idx}" style="margin: 0 0 12px; padding: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-weight: 700; font-size: 14px;">${ej}</div>
+          <span class="badge" id="rm-badge-${idx}">Pendiente</span>
+        </div>
+        ${[1,2,3].map(i => `
+          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <div>
+              <div style="font-size: 10px; color: var(--text-3); margin-bottom: 4px;">Intento ${i} — kg</div>
+              <input type="number" class="form-input" id="rm-${idx}-${i}-kg" 
+                inputmode="decimal" step="0.5" placeholder="0"
+                oninput="calcularRMIntento(${idx}, ${i})">
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--text-3); margin-bottom: 4px;">Reps</div>
+              <input type="number" class="form-input" id="rm-${idx}-${i}-reps" 
+                inputmode="numeric" min="1" max="20" placeholder="0"
+                oninput="calcularRMIntento(${idx}, ${i})">
+            </div>
+            <div style="text-align: center; min-width: 48px;">
+              <div style="font-size: 10px; color: var(--text-3); margin-bottom: 4px;">RM est.</div>
+              <div style="font-size: 14px; font-weight: 700; color: var(--primary);" id="rm-${idx}-${i}-result">—</div>
+            </div>
+          </div>
+        `).join('')}
+        <div style="background: var(--dark); border-radius: 8px; padding: 10px; margin-top: 8px; text-align: center;">
+          <div style="font-size: 10px; color: var(--text-3);">Mejor RM</div>
+          <div style="font-size: 20px; font-weight: 800; color: var(--success);" id="rm-${idx}-mejor">—</div>
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById('rm-form-contenido').innerHTML = html;
+  abrirModal('modal-test-rm');
+}
+
+function calcularRMIntento(ejIdx, intento) {
+  const kg = parseFloat(document.getElementById(`rm-${ejIdx}-${intento}-kg`).value) || 0;
+  const reps = parseInt(document.getElementById(`rm-${ejIdx}-${intento}-reps`).value) || 0;
+  const rm = (kg > 0 && reps > 0) ? brzycki(kg, reps) : 0;
+
+  const resultEl = document.getElementById(`rm-${ejIdx}-${intento}-result`);
+  resultEl.textContent = rm > 0 ? rm + 'kg' : '—';
+
+  // Actualizar mejor RM del ejercicio
+  let mejor = 0;
+  for (let i = 1; i <= 3; i++) {
+    const k = parseFloat(document.getElementById(`rm-${ejIdx}-${i}-kg`)?.value) || 0;
+    const r = parseInt(document.getElementById(`rm-${ejIdx}-${i}-reps`)?.value) || 0;
+    const rmI = (k > 0 && r > 0) ? brzycki(k, r) : 0;
+    if (rmI > mejor) mejor = rmI;
   }
-  
-  const peso = prompt(`${ejercicio} — Intento ${intento}/3\n\nPeso usado (kg):`);
-  if (peso === null) return;
-  if (!peso || isNaN(peso) || Number(peso) <= 0) {
-    toast('Peso inválido', 'error');
-    return;
+
+  const mejorEl = document.getElementById(`rm-${ejIdx}-mejor`);
+  mejorEl.textContent = mejor > 0 ? mejor + ' kg' : '—';
+
+  // Badge del ejercicio
+  const badge = document.getElementById(`rm-badge-${ejIdx}`);
+  const card = document.getElementById(`rm-card-${ejIdx}`);
+  if (mejor > 0) {
+    badge.textContent = '✓ ' + mejor + 'kg';
+    badge.className = 'badge success';
+    card.style.borderLeft = '3px solid var(--success)';
   }
-  
-  const reps = prompt(`${ejercicio} — Intento ${intento}/3\n\nRepeticiones realizadas:`);
-  if (reps === null) return;
-  if (!reps || isNaN(reps) || Number(reps) <= 0) {
-    toast('Reps inválidas', 'error');
-    return;
-  }
-  
-  api('guardarIntento', {
-    usuarioId: usuarioActual.ID,
-    ejercicio,
-    intento,
-    peso: Number(peso),
-    reps: Number(reps),
-  }).then(r => {
-    if (r.ok) {
-      toast(`Intento ${intento}: RM estimado ${r.rm}kg`);
-      testRMState.intento++;
-      setTimeout(pedirIntentoRM, 500);
+}
+
+async function guardarTestRMCompleto() {
+  const btn = document.getElementById('btn-guardar-rm');
+
+  // Validar que todos los ejercicios tengan al menos 1 intento
+  let todosCompletos = true;
+  const datos = [];
+
+  EJERCICIOS_RM.forEach((ej, idx) => {
+    let tieneAlMenosUno = false;
+    const intentos = [];
+
+    for (let i = 1; i <= 3; i++) {
+      const kg = parseFloat(document.getElementById(`rm-${idx}-${i}-kg`)?.value) || 0;
+      const reps = parseInt(document.getElementById(`rm-${idx}-${i}-reps`)?.value) || 0;
+      if (kg > 0 && reps > 0) {
+        tieneAlMenosUno = true;
+        intentos.push({ intento: i, peso: kg, reps });
+      }
+    }
+
+    if (!tieneAlMenosUno) {
+      todosCompletos = false;
+      document.getElementById(`rm-card-${idx}`).style.borderLeft = '3px solid var(--danger)';
     } else {
-      toast(r.error, 'error');
+      datos.push({ ejercicio: ej, intentos });
     }
   });
+
+  if (!todosCompletos) {
+    toast('Completa al menos 1 intento por ejercicio', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Guardando...';
+
+  // Guardar cada intento
+  let errores = [];
+  for (const d of datos) {
+    for (const intento of d.intentos) {
+      const r = await api('guardarIntento', {
+        usuarioId: usuarioActual.ID,
+        ejercicio: d.ejercicio,
+        intento: intento.intento,
+        peso: intento.peso,
+        reps: intento.reps,
+      });
+      if (!r.ok) errores.push(d.ejercicio + ': ' + r.error);
+    }
+  }
+
+  if (errores.length > 0) {
+    toast('Errores: ' + errores.join(', '), 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Guardar y Generar Plan';
+    return;
+  }
+
+  // Finalizar y generar plan
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Generando plan...';
+  const r = await api('finalizarTestRM', { usuarioId: usuarioActual.ID });
+
+  btn.disabled = false;
+  btn.innerHTML = '✓ Guardar y Generar Plan';
+
+  if (r.ok) {
+    cerrarModal('modal-test-rm');
+    toast(`🎉 Plan generado. RM promedio: ${r.rmPromedio}kg`);
+    setTimeout(() => cargarDashboard(), 800);
+  } else {
+    toast(r.error || 'Error al generar plan', 'error');
+  }
 }
 
-async function finalizarTestRM() {
-  const r = await api('finalizarTestRM', { usuarioId: usuarioActual.ID });
-  if (r.ok) {
-    toast(`✓ Test completado. RM: ${r.rmPromedio}kg. Plan generado.`);
-    setTimeout(() => cargarDashboard(), 1000);
-  } else {
-    toast(r.error, 'error');
-  }
+// Mantener compatibilidad con botón antiguo del dashboard
+function iniciarTestRM(ejercicio) {
+  abrirTestRMCompleto();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1155,17 +1270,35 @@ async function cargarSesion() {
     </div>
   `;
   
+  // Cargar series completadas de esta sesión
+  const registros = await api('obtenerSeriesCompletadas', {
+    usuarioId: usuarioActual.ID,
+    sesionId: r.sesion.id,
+  });
+  const completados = new Set();
+  if (registros.ok && registros.series) {
+    registros.series.forEach(s => completados.add(s.ejercicio));
+  }
+
   r.sesion.ejercicios.forEach((ej, idx) => {
+    const estaCompleto = completados.has(ej.nombre);
     html += `
-      <div class="exercise-card" onclick="iniciarEjercicio(${idx})">
+      <div class="exercise-card ${estaCompleto ? 'completed' : ''}" 
+           id="ej-card-${idx}"
+           onclick="${estaCompleto ? '' : `iniciarEjercicio(${idx})`}"
+           style="${estaCompleto ? 'border-left-color: var(--success); cursor: default; opacity: 0.8;' : 'cursor: pointer;'}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div style="flex: 1;">
-            <div class="exercise-name">${ej.nombre}</div>
+            <div class="exercise-name" style="${estaCompleto ? 'color: var(--success);' : ''}">
+              ${estaCompleto ? '✓ ' : ''}${ej.nombre}
+            </div>
             <div class="exercise-meta">
               ${ej.series}×${ej.repsMin}-${ej.repsMax} · ${ej.pesoSugerido}${typeof ej.pesoSugerido === 'number' ? 'kg' : ''} · ${ej.descansoSegundos}s descanso
             </div>
           </div>
-          <div style="font-size: 20px; color: var(--primary);">➜</div>
+          <div style="font-size: 20px; color: ${estaCompleto ? 'var(--success)' : 'var(--primary)'};">
+            ${estaCompleto ? '✓' : '➜'}
+          </div>
         </div>
       </div>
     `;
@@ -1242,6 +1375,23 @@ async function guardarSerie() {
   if (serieActual < ejercicioActual.totalSeries) {
     iniciarTimer(ejercicioActual.descanso, ejercicioActual.nombre, serieActual, ejercicioActual.totalSeries);
   } else {
+    // Marcar visualmente como completado
+    const card = document.getElementById(`ej-card-${ejercicioActual.idx}`);
+    if (card) {
+      card.classList.add('completed');
+      card.style.borderLeftColor = 'var(--success)';
+      card.style.cursor = 'default';
+      card.onclick = null;
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="flex: 1;">
+            <div class="exercise-name" style="color: var(--success);">✓ ${ejercicioActual.nombre}</div>
+            <div class="exercise-meta">Todas las series completadas</div>
+          </div>
+          <div style="font-size: 20px; color: var(--success);">✓</div>
+        </div>
+      `;
+    }
     toast(`✓ ${ejercicioActual.nombre} completado`);
   }
 }
@@ -1836,6 +1986,27 @@ if (API_URL.includes('PEGAR_URL_AQUI')) {
   console.warn('⚠️ Falta configurar API_URL con tu Apps Script Web App URL');
 }
 </script>
+
+
+<!-- MODAL: TEST RM COMPLETO (formulario único) -->
+<div class="modal" id="modal-test-rm">
+  <div class="modal-content" style="max-height: 95vh;">
+    <div class="modal-header">
+      <h2>📋 Evaluación RM</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-test-rm')">✕</button>
+    </div>
+    <p style="color: var(--text-3); font-size: 12px; margin-bottom: 16px;">
+      Ingresa los 3 intentos por ejercicio. El RM se calcula automáticamente.
+    </p>
+    <div id="rm-form-contenido"></div>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-test-rm')">Cancelar</button>
+      <button class="btn btn-success" style="flex: 2;" onclick="guardarTestRMCompleto()" id="btn-guardar-rm">
+        ✓ Guardar y Generar Plan
+      </button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
