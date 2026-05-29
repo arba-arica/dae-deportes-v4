@@ -487,8 +487,8 @@
 
   </div>
 
-  <!-- BOTTOM NAV -->
-  <div class="bottom-nav" id="bottom-nav" style="display:none;">
+  <!-- BOTTOM NAV USUARIO -->
+  <div class="bottom-nav" id="bottom-nav-usuario" style="display:none;">
     <div class="nav-item active" data-screen="dashboard" onclick="goTo('dashboard')">
       <div class="nav-icon">🏠</div><span>Inicio</span>
     </div>
@@ -501,7 +501,17 @@
     <div class="nav-item" data-screen="perfil" onclick="goTo('perfil')">
       <div class="nav-icon">👤</div><span>Perfil</span>
     </div>
-    <div class="nav-item" data-screen="coach" onclick="goTo('coach')" id="nav-coach" style="display:none;">
+  </div>
+
+  <!-- BOTTOM NAV COACH -->
+  <div class="bottom-nav" id="bottom-nav-coach" style="display:none;">
+    <div class="nav-item active" data-screen="coach" onclick="goTo('coach')">
+      <div class="nav-icon">🏠</div><span>Inicio</span>
+    </div>
+    <div class="nav-item" data-screen="perfil" onclick="goTo('perfil')">
+      <div class="nav-icon">👤</div><span>Perfil</span>
+    </div>
+    <div class="nav-item" data-screen="coach" onclick="goTo('coach')">
       <div class="nav-icon">⚙️</div><span>Coach</span>
     </div>
   </div>
@@ -788,10 +798,9 @@ function goTo(screen) {
   const target = document.getElementById('screen-' + screen);
   if (target) target.classList.add('active');
   
-  // Actualizar nav
+  // Actualizar nav activo (ambos navs)
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const navItem = document.querySelector(`[data-screen="${screen}"]`);
-  if (navItem) navItem.classList.add('active');
+  document.querySelectorAll(`[data-screen="${screen}"]`).forEach(n => n.classList.add('active'));
   
   // Scroll top
   document.getElementById('content').scrollTop = 0;
@@ -860,7 +869,8 @@ function logout() {
   if (!confirm('¿Cerrar sesión?')) return;
   usuarioActual = null;
   localStorage.removeItem('usuario');
-  document.getElementById('bottom-nav').style.display = 'none';
+  document.getElementById('bottom-nav-usuario').style.display = 'none';
+  document.getElementById('bottom-nav-coach').style.display = 'none';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-login').classList.add('active');
   document.getElementById('login-email').value = '';
@@ -868,18 +878,13 @@ function logout() {
 }
 
 function mostrarApp() {
-  document.getElementById('bottom-nav').style.display = 'flex';
-  
-  // Mostrar/ocultar nav coach según rol
-  const navCoach = document.getElementById('nav-coach');
-  if (usuarioActual.Rol === 'coach' || usuarioActual.Rol === 'admin') {
-    navCoach.style.display = 'flex';
-  } else {
-    navCoach.style.display = 'none';
-  }
-  
-  // Si es coach, ir directo a panel
-  if (usuarioActual.Rol === 'coach') {
+  const esCoach = usuarioActual.Rol === 'coach' || usuarioActual.Rol === 'admin';
+
+  // Mostrar nav correcto
+  document.getElementById('bottom-nav-usuario').style.display = esCoach ? 'none' : 'flex';
+  document.getElementById('bottom-nav-coach').style.display = esCoach ? 'flex' : 'none';
+
+  if (esCoach) {
     goTo('coach');
   } else {
     goTo('dashboard');
@@ -908,20 +913,25 @@ async function cargarDashboard() {
   
   const { asignacion, progreso, rmMaximo, rpePromedio, racha, fase } = r;
   
-  document.getElementById('dash-status').textContent = asignacion ? 
-    `${asignacion.Tipo} ${asignacion.Numero} — ${fase}` : 'Sin plan asignado';
-  
+  const mesActual = asignacion ? Number(asignacion.Mes_Actual || 1) : 1;
+  const sesionesXMes = asignacion ? Math.round(Number(asignacion.Sesiones_Total) / 3) : 18;
+  const progresoMes = asignacion ? 
+    Math.round((Number(asignacion.Sesiones_Completadas) / sesionesXMes) * 100) : 0;
+
+  document.getElementById('dash-status').textContent = asignacion ?
+    `Ciclo 3 Meses · Mes ${mesActual}/3 · ${fase}` : 'Sin plan asignado';
+
   let html = `
     <div class="card-grid">
       <div class="stat-card">
-        <div class="stat-label">Sesión</div>
-        <div class="stat-value">${asignacion ? asignacion.Sesion_Actual : 0}/${asignacion ? asignacion.Sesiones_Total : 0}</div>
-        <div class="stat-label">de tu plan</div>
+        <div class="stat-label">Mes</div>
+        <div class="stat-value">${mesActual}<span style="font-size:14px;">/3</span></div>
+        <div class="stat-label">del ciclo</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Progreso</div>
-        <div class="stat-value">${progreso}%</div>
-        <div class="stat-label">completado</div>
+        <div class="stat-value">${progresoMes}%</div>
+        <div class="stat-label">este mes</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">RM Máximo</div>
@@ -934,8 +944,22 @@ async function cargarDashboard() {
         <div class="stat-label">sesiones</div>
       </div>
     </div>
-    
-    <div class="progress-bar"><div class="progress-fill" style="width:${progreso}%;"></div></div>
+
+    <!-- Indicador 3 meses -->
+    <div style="display: flex; gap: 6px; padding: 0 12px; margin-bottom: 4px;">
+      ${[1,2,3].map(m => `
+        <div style="flex: 1; padding: 8px; border-radius: 8px; text-align: center;
+             background: ${m < mesActual ? 'rgba(5,150,105,.15)' : m === mesActual ? 'rgba(37,99,235,.15)' : 'var(--surface)'};
+             border: 1px solid ${m < mesActual ? 'var(--success)' : m === mesActual ? 'var(--primary)' : 'var(--border)'};">
+          <div style="font-size: 10px; color: var(--text-3);">Mes ${m}</div>
+          <div style="font-size: 12px; font-weight: 700; color: ${m < mesActual ? 'var(--success)' : m === mesActual ? 'var(--primary)' : 'var(--text-3)'};">
+            ${m < mesActual ? '✓' : m === mesActual ? '▶' : '🔒'}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" style="width:${progresoMes}%;"></div></div>
   `;
   
   if (!asignacion) {
@@ -1144,7 +1168,10 @@ async function guardarTestRMCompleto() {
 
   // Finalizar y generar plan
   btn.innerHTML = '<span class="spinner spinner-sm"></span> Generando plan...';
-  const r = await api('finalizarTestRM', { usuarioId: usuarioActual.ID });
+  const r = await api('finalizarTestRM', {
+    usuarioId: usuarioActual.ID,
+    diasSemana: diasSemanaSeleccionados || 3,
+  });
 
   btn.disabled = false;
   btn.innerHTML = '✓ Guardar y Generar Plan';
@@ -1184,52 +1211,86 @@ async function cargarPlan() {
   }
   
   const p = r.plan;
-  document.getElementById('plan-meta').textContent = 
-    `${p.cicloTipo} ${p.cicloNumero} · RM: ${p.rmUtilizado}kg · ${p.sesionesCompletadas}/${p.totalSesiones}`;
+  const mesActualPlan = p.mesActual || 1;
+  document.getElementById('plan-meta').textContent =
+    `Ciclo 3 Meses · RM: ${p.rmUtilizado}kg · Mes ${mesActualPlan}/3`;
   
-  // Agrupar por semana
-  const porSemana = {};
+  // Agrupar por mes y semana
+  const porMes = {};
   p.sesiones.forEach(s => {
-    if (!porSemana[s.semana]) porSemana[s.semana] = [];
-    porSemana[s.semana].push(s);
+    const mes = s.mes || 1;
+    if (!porMes[mes]) porMes[mes] = {};
+    if (!porMes[mes][s.semana]) porMes[mes][s.semana] = [];
+    porMes[mes][s.semana].push(s);
   });
-  
+
   let html = '';
-  Object.keys(porSemana).sort((a,b) => a-b).forEach(semana => {
-    const sesiones = porSemana[semana];
-    const fase = sesiones[0].fase;
-    
+  [1,2,3].forEach(mes => {
+    const bloqueado = mes > mesActualPlan;
+    const completado = mes < mesActualPlan;
+    const activo = mes === mesActualPlan;
+
     html += `
-      <div style="padding: 12px 16px 6px;">
-        <div style="font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px;">
-          Semana ${semana} · ${fase}
+      <div style="margin: 16px 0 0;">
+        <div style="padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
+             background: ${completado ? 'rgba(5,150,105,.1)' : activo ? 'rgba(37,99,235,.1)' : 'var(--surface)'};
+             border-left: 3px solid ${completado ? 'var(--success)' : activo ? 'var(--primary)' : 'var(--border)'};">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: ${completado ? 'var(--success)' : activo ? 'var(--primary)' : 'var(--text-3)'};">
+              ${completado ? '✓ ' : activo ? '▶ ' : '🔒 '}Mes ${mes}
+            </div>
+            <div style="font-size: 10px; color: var(--text-3); margin-top: 2px;">
+              ${completado ? 'Completado' : activo ? 'En curso' : 'Bloqueado — completa el mes anterior'}
+            </div>
+          </div>
+          ${bloqueado ? '<span class="badge">Bloqueado</span>' : completado ? '<span class="badge success">✓</span>' : '<span class="badge warning">Activo</span>'}
         </div>
       </div>
     `;
-    
-    sesiones.forEach(s => {
-      const isActual = s.numero === p.sesionActual && s.estado !== 'Completada';
-      const isCompleted = s.estado === 'Completada';
-      
-      const badge = isCompleted ? 
-        '<span class="badge success">✓ Completada</span>' :
-        isActual ? 
-          '<span class="badge warning">Hoy</span>' :
-          '<span class="badge">Pendiente</span>';
-      
+
+    if (bloqueado) return; // No mostrar sesiones bloqueadas
+
+    const semanasDelMes = porMes[mes] || {};
+    Object.keys(semanasDelMes).sort((a,b) => a-b).forEach(semana => {
+      const sesiones = semanasDelMes[semana];
+      const fase = sesiones[0].fase;
+
       html += `
-        <div class="exercise-card ${isCompleted ? 'completed' : ''}" style="${isActual ? 'border-left-color: var(--warning);' : ''}">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div class="exercise-name">Sesión ${s.numero}</div>
-            ${badge}
-          </div>
-          <div class="exercise-meta">${s.tipoDia.replace(/_/g, ' ')}</div>
-          <div style="font-size: 11px; color: var(--text-2); margin-top: 8px;">
-            ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}kg)`).join('<br>')}
-            ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
+        <div style="padding: 8px 16px 4px;">
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px;">
+            Semana ${semana} · ${fase}
           </div>
         </div>
       `;
+
+      sesiones.forEach(s => {
+        const isActual = s.numero === p.sesionActual && s.estado !== 'Completada' && activo;
+        const isCompleted = s.estado === 'Completada';
+        const isBloqueada = s.estado === 'Bloqueada';
+
+        const badge = isCompleted ?
+          '<span class="badge success">✓</span>' :
+          isActual ? '<span class="badge warning">Hoy</span>' :
+          isBloqueada ? '<span class="badge">🔒</span>' :
+          '<span class="badge">Pendiente</span>';
+
+        html += `
+          <div class="exercise-card ${isCompleted ? 'completed' : ''}"
+               style="${isActual ? 'border-left-color: var(--warning);' : ''}
+                      ${isBloqueada ? 'opacity: .5; cursor: default;' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div class="exercise-name">Sesión ${s.numero}</div>
+              ${badge}
+            </div>
+            <div class="exercise-meta">${(s.tipoDia || '').replace(/_/g, ' ')}</div>
+            ${!isBloqueada ? `
+            <div style="font-size: 11px; color: var(--text-2); margin-top: 8px;">
+              ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}
+              ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
+            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}
+          </div>
+        `;
+      });
     });
   });
   
@@ -1588,6 +1649,7 @@ function cargarPerfil() {
       </div>
     </div>
     
+    <button class="btn btn-secondary btn-block" onclick="abrirHistorial()">📊 Historial de sesiones</button>
     <button class="btn btn-secondary btn-block" onclick="abrirModal('modal-cambiar-pass')">🔐 Cambiar contraseña</button>
     <button class="btn btn-danger btn-block" onclick="logout()">🚪 Cerrar sesión</button>
   `;
@@ -1787,6 +1849,28 @@ async function verDetalleUsuario(usuarioId, nombre) {
     });
   }
   
+  // Verificar si puede avanzar al siguiente mes
+  if (r.asignacion && Number(r.asignacion.Mes_Actual || 1) < 3) {
+    html += `
+      <div class="card" style="margin: 14px 0 0; border-color: var(--warning);">
+        <div style="font-weight: 600; margin-bottom: 8px; color: var(--warning);">📈 Avance de Mes</div>
+        <div style="font-size: 11px; color: var(--text-3); margin-bottom: 10px;">
+          Mes actual: ${r.asignacion.Mes_Actual || 1} de 3
+        </div>
+        <button class="btn btn-primary" style="width: 100%;" onclick="verSugerenciaIncremento('${usuarioId}', '${nombre}')">
+          📊 Ver sugerencia de incremento
+        </button>
+      </div>
+    `;
+  } else if (r.asignacion && Number(r.asignacion.Mes_Actual || 1) >= 3) {
+    html += `
+      <div class="alert alert-success">
+        <div>🎉</div>
+        <div>Ciclo de 3 meses completado. Nueva evaluación requerida.</div>
+      </div>
+    `;
+  }
+
   html += `
     <div style="display: flex; gap: 10px; margin-top: 14px;">
       <button class="btn btn-secondary" style="flex: 1;" onclick="abrirEnviarMensaje('${usuarioId}', '${nombre}')">💬 Mensaje</button>
@@ -1981,6 +2065,293 @@ window.addEventListener('load', () => {
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROGRESIÓN 3 MESES — COACH
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function verSugerenciaIncremento(usuarioId, nombre) {
+  cerrarModal('modal-user-detalle');
+  document.getElementById('incremento-contenido').innerHTML = 
+    '<div class="loading"><div class="spinner"></div></div>';
+  abrirModal('modal-incremento');
+
+  const r = await api('getSugerenciaIncremento', {
+    coachId: usuarioActual.ID,
+    usuarioId,
+  });
+
+  if (!r.ok) {
+    document.getElementById('incremento-contenido').innerHTML =
+      `<div class="alert alert-danger">⚠️ ${r.error}</div>`;
+    return;
+  }
+
+  const html = `
+    <div class="card" style="margin: 0 0 12px; text-align: center;">
+      <div style="font-size: 11px; color: var(--text-3);">Estudiante</div>
+      <div style="font-weight: 700; font-size: 16px; margin: 4px 0;">${nombre}</div>
+      <div style="display: flex; justify-content: center; gap: 16px; margin-top: 8px;">
+        <div>
+          <div style="font-size: 10px; color: var(--text-3);">Mes actual</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--primary);">${r.mesActual}</div>
+        </div>
+        <div style="font-size: 20px; color: var(--text-3);">→</div>
+        <div>
+          <div style="font-size: 10px; color: var(--text-3);">Siguiente mes</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--success);">${r.mesSiguiente}</div>
+        </div>
+      </div>
+    </div>
+
+    ${r.rpePromedio ? `
+    <div class="alert alert-info">
+      <div>📊</div>
+      <div>RPE promedio mes ${r.mesActual}: <strong>${r.rpePromedio}</strong><br>
+      <span style="font-size: 11px;">${r.razon}</span></div>
+    </div>
+    ` : `
+    <div class="alert alert-warning">
+      <div>⚠️</div>
+      <div>Sin feedback registrado. Se aplica incremento estándar.</div>
+    </div>
+    `}
+
+    <h3 style="margin: 16px 0 10px; font-size: 13px;">Selecciona el incremento:</h3>
+
+    ${r.opciones.map(op => `
+      <div class="card" style="margin: 0 0 8px; padding: 12px; cursor: pointer;
+           border: 2px solid ${op.pct === r.incrementoSugerido ? 'var(--primary)' : 'var(--border)'};"
+           onclick="seleccionarIncremento('${usuarioId}', ${op.pct}, this)">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 700;">${op.label}</div>
+            <div style="font-size: 11px; color: var(--text-3);">
+              RM actual ${r.rmActual}kg → <strong>${op.rm}kg</strong>
+            </div>
+          </div>
+          ${op.pct === r.incrementoSugerido ? 
+            '<span class="badge success">⭐ Sugerido</span>' : 
+            '<span class="badge">Opción</span>'
+          }
+        </div>
+      </div>
+    `).join('')}
+
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-incremento')">
+        Cancelar
+      </button>
+      <button class="btn btn-success" style="flex: 2;" id="btn-confirmar-mes"
+              onclick="confirmarAvanceMes('${usuarioId}')" disabled>
+        ✓ Confirmar y desbloquear Mes ${r.mesSiguiente}
+      </button>
+    </div>
+  `;
+
+  document.getElementById('incremento-contenido').innerHTML = html;
+  window._incrementoSeleccionado = r.incrementoSugerido;
+  window._usuarioMes = usuarioId;
+}
+
+function seleccionarIncremento(usuarioId, pct, el) {
+  // Desmarcar todos
+  document.querySelectorAll('#incremento-contenido .card').forEach(c => {
+    c.style.borderColor = 'var(--border)';
+  });
+  // Marcar seleccionado
+  el.style.borderColor = 'var(--primary)';
+  window._incrementoSeleccionado = pct;
+
+  const btn = document.getElementById('btn-confirmar-mes');
+  if (btn) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function confirmarAvanceMes(usuarioId) {
+  const btn = document.getElementById('btn-confirmar-mes');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Procesando...';
+
+  const r = await api('avanzarAlSiguienteMes', {
+    coachId: usuarioActual.ID,
+    usuarioId,
+    pctAprobado: window._incrementoSeleccionado,
+  });
+
+  if (r.ok) {
+    cerrarModal('modal-incremento');
+    toast(`🎉 Mes ${r.mesSiguiente} desbloqueado. RM: ${r.rmNuevo}kg (+${r.incremento}%)`);
+    setTimeout(cargarCoach, 800);
+  } else {
+    toast(r.error, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Confirmar';
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DÍAS POR SEMANA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let diasSemanaSeleccionados = 3;
+
+function seleccionarDias(dias, btn) {
+  diasSemanaSeleccionados = dias;
+
+  // Actualizar botones
+  document.querySelectorAll('.dias-btn').forEach(b => {
+    b.style.background = 'var(--dark)';
+    b.style.color = 'var(--text-3)';
+    b.style.borderColor = 'var(--border)';
+  });
+  btn.style.background = 'var(--primary)';
+  btn.style.color = 'white';
+  btn.style.borderColor = 'var(--primary)';
+
+  // Calcular sesiones
+  const sesXMes = 6 * dias;
+  const totalSes = sesXMes * 3;
+  const semanas = 6;
+  const label = document.getElementById('dias-label');
+  if (label) {
+    label.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas por mes`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HISTORIAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let historialTab = 'sesiones';
+
+async function abrirHistorial() {
+  abrirModal('modal-historial');
+  cargarHistorial('sesiones');
+}
+
+function switchHistorial(tab, btn) {
+  historialTab = tab;
+  document.querySelectorAll('#modal-historial .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  cargarHistorial(tab);
+}
+
+async function cargarHistorial(tab) {
+  document.getElementById('historial-contenido').innerHTML =
+    '<div class="loading"><div class="spinner"></div></div>';
+
+  if (tab === 'sesiones') {
+    const r = await api('obtenerPlanCompleto', { usuarioId: usuarioActual.ID });
+    if (!r.ok || !r.plan) {
+      document.getElementById('historial-contenido').innerHTML =
+        '<div class="empty"><div class="empty-icon">📋</div><div>Sin sesiones registradas</div></div>';
+      return;
+    }
+    const completadas = r.plan.sesiones.filter(s => s.estado === 'Completada');
+    if (completadas.length === 0) {
+      document.getElementById('historial-contenido').innerHTML =
+        '<div class="empty"><div class="empty-icon">🏋️</div><div>Aún no has completado sesiones</div></div>';
+      return;
+    }
+    let html = `<div style="padding: 4px 0 8px; font-size: 11px; color: var(--text-3);">${completadas.length} sesiones completadas</div>`;
+    completadas.reverse().forEach(s => {
+      html += `
+        <div class="card" style="padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 600; font-size: 13px;">Sesión ${s.numero} — Mes ${s.mes || 1}</div>
+              <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">
+                ${(s.tipoDia || '').replace(/_/g, ' ')} · ${s.fase}
+              </div>
+            </div>
+            <span class="badge success">✓</span>
+          </div>
+        </div>
+      `;
+    });
+    document.getElementById('historial-contenido').innerHTML = html;
+
+  } else if (tab === 'series') {
+    const r = await api('obtenerHistorialSeries', { usuarioId: usuarioActual.ID });
+    if (!r.ok || r.series.length === 0) {
+      document.getElementById('historial-contenido').innerHTML =
+        '<div class="empty"><div class="empty-icon">💪</div><div>Sin series registradas</div></div>';
+      return;
+    }
+    // Agrupar por ejercicio
+    const porEjercicio = {};
+    r.series.forEach(s => {
+      if (!porEjercicio[s.Ejercicio_Nombre]) porEjercicio[s.Ejercicio_Nombre] = [];
+      porEjercicio[s.Ejercicio_Nombre].push(s);
+    });
+    let html = '';
+    Object.keys(porEjercicio).forEach(ej => {
+      const series = porEjercicio[ej];
+      const mejorRM = Math.max(...series.map(s => Number(s.RM_Estimado || 0)));
+      const ultimoPeso = series[series.length - 1];
+      html += `
+        <div class="card" style="padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 600;">${ej}</div>
+            ${mejorRM > 0 ? `<span class="badge success">RM: ${mejorRM}kg</span>` : ''}
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; font-size: 11px;">
+            <div style="background: var(--dark); padding: 6px; border-radius: 6px; text-align: center;">
+              <div style="color: var(--text-3);">Series</div>
+              <div style="font-weight: 700;">${series.length}</div>
+            </div>
+            <div style="background: var(--dark); padding: 6px; border-radius: 6px; text-align: center;">
+              <div style="color: var(--text-3);">Último</div>
+              <div style="font-weight: 700;">${ultimoPeso.Peso_Realizado}kg</div>
+            </div>
+            <div style="background: var(--dark); padding: 6px; border-radius: 6px; text-align: center;">
+              <div style="color: var(--text-3);">Reps</div>
+              <div style="font-weight: 700;">${ultimoPeso.Reps_Realizadas}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    document.getElementById('historial-contenido').innerHTML = html;
+
+  } else if (tab === 'feedback') {
+    const r = await api('listarFeedbackUsuario', { usuarioId: usuarioActual.ID });
+    if (!r.ok || r.feedback.length === 0) {
+      document.getElementById('historial-contenido').innerHTML =
+        '<div class="empty"><div class="empty-icon">📝</div><div>Sin feedback registrado</div></div>';
+      return;
+    }
+    let html = '';
+    r.feedback.slice(0, 20).forEach(f => {
+      const rpe = Number(f.RPE);
+      const color = rpe < 6 ? 'var(--success)' : rpe <= 7 ? 'var(--warning)' : 'var(--danger)';
+      html += `
+        <div class="card" style="padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <div style="font-size: 11px; color: var(--text-3);">
+              ${new Date(f.Fecha).toLocaleDateString('es-CL')}
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <span class="badge" style="background: rgba(37,99,235,.15); color: ${color};">RPE: ${f.RPE}</span>
+              <span class="badge">Fatiga: ${f.Fatiga}</span>
+            </div>
+          </div>
+          ${f.Notas_Usuario ? `<div style="font-size: 12px; color: var(--text-2);">${f.Notas_Usuario}</div>` : ''}
+          ${f.Coach_Comentario ? `
+            <div style="margin-top: 8px; padding: 8px; background: rgba(37,99,235,.08); border-radius: 6px; font-size: 11px; color: var(--primary);">
+              👨‍🏫 ${f.Coach_Comentario}
+            </div>` : ''}
+        </div>
+      `;
+    });
+    document.getElementById('historial-contenido').innerHTML = html;
+  }
+}
+
 // Validar configuración
 if (API_URL.includes('PEGAR_URL_AQUI')) {
   console.warn('⚠️ Falta configurar API_URL con tu Apps Script Web App URL');
@@ -1998,6 +2369,24 @@ if (API_URL.includes('PEGAR_URL_AQUI')) {
     <p style="color: var(--text-3); font-size: 12px; margin-bottom: 16px;">
       Ingresa los 3 intentos por ejercicio. El RM se calcula automáticamente.
     </p>
+
+    <!-- Días por semana -->
+    <div style="background: var(--surface); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+      <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">¿Cuántos días por semana entrenas?</div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        ${[1,2,3,4,5,6,7].map(d => `
+          <button onclick="seleccionarDias(${d}, this)"
+            style="flex: 1; min-width: 36px; padding: 8px 4px; border-radius: 6px; font-weight: 700; font-size: 13px;
+                   background: ${d === 3 ? 'var(--primary)' : 'var(--dark)'}; 
+                   color: ${d === 3 ? 'white' : 'var(--text-3)'};
+                   border: 1px solid ${d === 3 ? 'var(--primary)' : 'var(--border)'};"
+            class="dias-btn ${d === 3 ? 'activo' : ''}">${d}</button>
+        `).join('')}
+      </div>
+      <div style="font-size: 10px; color: var(--text-3); margin-top: 8px; text-align: center;"
+           id="dias-label">3 días/semana · 18 sesiones/mes · ~6 semanas</div>
+    </div>
+
     <div id="rm-form-contenido"></div>
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-test-rm')">Cancelar</button>
@@ -2005,6 +2394,35 @@ if (API_URL.includes('PEGAR_URL_AQUI')) {
         ✓ Guardar y Generar Plan
       </button>
     </div>
+  </div>
+</div>
+
+
+<!-- MODAL: SUGERENCIA INCREMENTO MES -->
+<div class="modal" id="modal-incremento">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>📈 Avance al siguiente mes</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-incremento')">✕</button>
+    </div>
+    <div id="incremento-contenido"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
+
+<!-- MODAL: HISTORIAL SESIONES -->
+<div class="modal" id="modal-historial">
+  <div class="modal-content" style="max-height: 90vh;">
+    <div class="modal-header">
+      <h2>📊 Historial</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-historial')">✕</button>
+    </div>
+    <div class="tabs" style="margin: 0 0 12px;">
+      <button class="tab active" onclick="switchHistorial('sesiones', this)">Sesiones</button>
+      <button class="tab" onclick="switchHistorial('series', this)">Series</button>
+      <button class="tab" onclick="switchHistorial('feedback', this)">Feedback</button>
+    </div>
+    <div id="historial-contenido"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
 
