@@ -481,7 +481,8 @@
         <div class="card">
           <h3 style="margin-bottom: 12px;">Acciones rápidas</h3>
           <button class="btn btn-secondary btn-block" onclick="cargarCoach()" style="margin: 6px 0;">🔄 Refrescar datos</button>
-          <button class="btn btn-danger btn-block" onclick="resetAllData()" style="margin: 6px 0; display: none;" id="btn-reset-all-data">🗑️ Resetear Todas las Tablas</button>
+          <button class="btn btn-danger btn-block" onclick="resetAllData()" style="margin: 6px 0; display: none;" id="btn-reset-all-data">🗑️ Resetear Solo Datos</button>
+          <button class="btn btn-danger btn-block" onclick="hardResetSpreadsheetFrontend()" style="margin: 6px 0; display: none;" id="btn-hard-reset-spreadsheet">🚨 Resetear TODO (Hojas y Datos)</button>
         </div>
       </div>
     </div>
@@ -824,12 +825,15 @@ function switchTab(seccion, tab) {
   
   if (tab === 'mensajes' && seccion === 'coach') cargarMensajesCoach();
   if (tab === 'config' && seccion === 'coach') {
-    // Mostrar botón de reset solo si es admin
-    const btnReset = document.getElementById('btn-reset-all-data');
+    // Mostrar botones de reset solo si es admin
+    const btnResetData = document.getElementById('btn-reset-all-data');
+    const btnHardReset = document.getElementById('btn-hard-reset-spreadsheet');
     if (usuarioActual && usuarioActual.Email.toLowerCase() === ADMIN_EMAIL_FRONTEND.toLowerCase()) {
-      btnReset.style.display = 'block';
+      btnResetData.style.display = 'block';
+      btnHardReset.style.display = 'block'; // Show hard reset button for admin
     } else {
-      btnReset.style.display = 'none';
+      btnResetData.style.display = 'none';
+      btnHardReset.style.display = 'none'; // Hide hard reset button for non-admin
     }
   }
 }
@@ -2487,7 +2491,7 @@ async function resetAllData() {
   const r = await api('resetAllTables', { adminId: usuarioActual.ID });
 
   btn.disabled = false;
-  btn.innerHTML = '🗑️ Resetear Todas las Tablas';
+  btn.innerHTML = '🗑️ Resetear Solo Datos';
 
   if (r.ok) {
     toast('✓ Todas las tablas han sido reseteadas. Se ha recreado el usuario administrador.', 'success');
@@ -2496,6 +2500,43 @@ async function resetAllData() {
     alert('Las tablas han sido reseteadas. El usuario administrador ha sido recreado. Si no recuerdas la clave, revisa los logs de Apps Script o el email de configuración.');
   } else {
     toast(r.error || 'Error al resetear las tablas.', 'error');
+  }
+}
+
+async function hardResetSpreadsheetFrontend() {
+  if (usuarioActual.Email.toLowerCase() !== ADMIN_EMAIL_FRONTEND.toLowerCase()) {
+    toast('Acceso denegado. Solo el administrador puede realizar un reseteo completo de la estructura de la hoja de cálculo.', 'error');
+    return;
+  }
+
+  if (!confirm('¡ADVERTENCIA EXTREMA! Estás a punto de ELIMINAR TODAS LAS HOJAS de tu Google Spreadsheet y recrearlas desde cero. Esto borrará PERMANENTEMENTE TODOS los datos y la estructura de las hojas. Esta acción es IRREVERSIBLE. ¿Estás ABSOLUTAMENTE seguro?')) {
+    return;
+  }
+  if (!confirm('ÚLTIMA ADVERTENCIA EXTREMA: Esta acción borrará TODO, incluyendo las hojas. No hay vuelta atrás. Escribe "ELIMINAR TODAS LAS HOJAS" para confirmar.')) {
+    return;
+  }
+  const confirmation = prompt('Para confirmar, escribe "ELIMINAR TODAS LAS HOJAS" (en mayúsculas):');
+  if (confirmation !== 'ELIMINAR TODAS LAS HOJAS') {
+    toast('Confirmación incorrecta. Operación cancelada.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-hard-reset-spreadsheet');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Reseteando todo...';
+
+  const r = await api('hardResetSpreadsheet', { adminId: usuarioActual.ID });
+
+  btn.disabled = false;
+  btn.innerHTML = '🚨 Resetear TODO (Hojas y Datos)';
+
+  if (r.ok) {
+    toast('✓ Todas las hojas han sido eliminadas y recreadas. El usuario administrador ha sido recreado.', 'success');
+    // Forzar logout y volver a la pantalla de login
+    logout();
+    alert('Todas las hojas han sido eliminadas y recreadas. El usuario administrador ha sido recreado. Si no recuerdas la clave, revisa los logs de Apps Script o el email de configuración.');
+  } else {
+    toast(r.error || 'Error al realizar el reseteo completo de la hoja de cálculo.', 'error');
   }
 }
 
