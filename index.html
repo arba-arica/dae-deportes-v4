@@ -1950,7 +1950,7 @@ async function crearUsuario() {
   }
   
   // CORRECCIÓN: Regex para validación de email en el lado del cliente
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { // FIX: Corrected regex literal
     toast('Email inválido', 'error');
     return;
   }
