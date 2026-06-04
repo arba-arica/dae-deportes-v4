@@ -481,6 +481,7 @@
         <div class="card">
           <h3 style="margin-bottom: 12px;">Acciones rápidas</h3>
           <button class="btn btn-secondary btn-block" onclick="cargarCoach()" style="margin: 6px 0;">🔄 Refrescar datos</button>
+          <button class="btn btn-danger btn-block" onclick="resetAllData()" style="margin: 6px 0; display: none;" id="btn-reset-all-data">🗑️ Resetear Todas las Tablas</button>
         </div>
       </div>
     </div>
@@ -724,7 +725,8 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN - CAMBIAR ESTA URL POR LA DE TU APPS SCRIPT
 // ═══════════════════════════════════════════════════════════════════════════════
-const API_URL = 'https://script.google.com/macros/s/AKfycbyl72mY4gsPtvZxzzztPf0foKuogLe7OAwsusj5-EKg1-uyLvAdxkenpr3uU99HaaEO/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyl72mY4gsPtvZxzzztPf0foKuogLe7OAwsusj5-EKg1-uyLvAdxkenpr3uU99HaaEO/exec'; // ⚠️ ACTUALIZA ESTA URL
+const ADMIN_EMAIL_FRONTEND = 'admin@uta.cl'; // ⚠️ CAMBIAR: Debe coincidir con ADMIN_EMAIL en Codigo.gs
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL
@@ -733,7 +735,7 @@ let usuarioActual = null;
 let sesionActualData = null;
 let ejercicioActual = { idx: 0, nombre: '', totalSeries: 0, descanso: 60 };
 let serieActual = 1;
-let coachContext = { usuarioSeleccionado: null };
+let coachContext = { usuarioSeleccionado: null, rmIndividuales: {} }; // Añadido rmIndividuales para precarga
 
 // Timer
 let timer = {
@@ -821,6 +823,15 @@ function switchTab(seccion, tab) {
   document.getElementById(`${seccion}-tab-${tab}`).style.display = 'block';
   
   if (tab === 'mensajes' && seccion === 'coach') cargarMensajesCoach();
+  if (tab === 'config' && seccion === 'coach') {
+    // Mostrar botón de reset solo si es admin
+    const btnReset = document.getElementById('btn-reset-all-data');
+    if (usuarioActual && usuarioActual.Email.toLowerCase() === ADMIN_EMAIL_FRONTEND.toLowerCase()) {
+      btnReset.style.display = 'block';
+    } else {
+      btnReset.style.display = 'none';
+    }
+  }
 }
 
 function toggleTheme() {
@@ -914,7 +925,8 @@ async function cargarDashboard() {
   const { asignacion, progreso, rmMaximo, rpePromedio, racha, fase } = r;
   
   const mesActual = asignacion ? Number(asignacion.Mes_Actual || 1) : 1;
-  const sesionesXMes = asignacion ? Math.round(Number(asignacion.Sesiones_Total) / 3) : 18;
+  const sesionesXMes = asignacion ? 
+    Number(asignacion.Dias_Semana) * 6 : 18; // Usar Dias_Semana de la asignación
   const progresoMes = asignacion ? 
     Math.round((Number(asignacion.Sesiones_Completadas) / sesionesXMes) * 100) : 0;
 
@@ -1276,6 +1288,8 @@ async function cargarPlan() {
 
         html += `
           <div class="exercise-card ${isCompleted ? 'completed' : ''}"
+               id="sesion-card-${s.id}"
+               onclick="${isBloqueada ? '' : `goTo('sesion', '${s.id}')`}"
                style="${isActual ? 'border-left-color: var(--warning);' : ''}
                       ${isBloqueada ? 'opacity: .5; cursor: default;' : ''}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -1285,9 +1299,9 @@ async function cargarPlan() {
             <div class="exercise-meta">${(s.tipoDia || '').replace(/_/g, ' ')}</div>
             ${!isBloqueada ? `
             <div style="font-size: 11px; color: var(--text-2); margin-top: 8px;">
-              ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}
+              ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}\
               ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
-            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}
+            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}\
           </div>
         `;
       });
@@ -1792,6 +1806,7 @@ async function verDetalleUsuario(usuarioId, nombre) {
     return;
   }
   
+  coachContext.rmIndividuales = r.rmIndividuales || {}; // Guardar RMs individuales para el modal de edición
   let html = `
     <div class="mini-stats" style="margin-bottom: 16px;">
       <div class="mini-stat">
@@ -1874,8 +1889,9 @@ async function verDetalleUsuario(usuarioId, nombre) {
   html += `
     <div style="display: flex; gap: 10px; margin-top: 14px;">
       <button class="btn btn-secondary" style="flex: 1;" onclick="abrirEnviarMensaje('${usuarioId}', '${nombre}')">💬 Mensaje</button>
-      <button class="btn btn-primary" style="flex: 1;" onclick="cerrarModal('modal-user-detalle')">Cerrar</button>
+      <button class="btn btn-primary" style="flex: 1;" onclick="abrirCoachRMInput('${usuarioId}', '${nombre}')">💪 Actualizar RMs</button>
     </div>
+    <button class="btn btn-secondary btn-block" style="margin-top: 10px;" onclick="cerrarModal('modal-user-detalle')">Cerrar</button>
   `;
   
   document.getElementById('ud-contenido').innerHTML = html;
@@ -1913,6 +1929,12 @@ async function crearUsuario() {
   
   if (!nombre || !email) {
     toast('Nombre y email obligatorios', 'error');
+    return;
+  }
+  
+  // CORRECCIÓN: Regex para validación de email en el lado del cliente
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('Email inválido', 'error');
     return;
   }
   
@@ -2063,6 +2085,15 @@ window.addEventListener('load', () => {
   } catch (e) {
     localStorage.removeItem('usuario');
   }
+
+  // Advertencia si API_URL no está configurada
+  if (API_URL.includes('AKfycbyl72mY4gsPtvZxzzztPf0foKuogLe7OAwsusj5-EKg1-uyLvAdxkenpr3uU99HaaEO/exec')) {
+    console.warn('⚠️ Falta configurar API_URL con tu Apps Script Web App URL. La URL actual es un placeholder.');
+  }
+  // Advertencia si ADMIN_EMAIL_FRONTEND no está configurado
+  if (ADMIN_EMAIL_FRONTEND === 'admin@uta.cl') {
+    console.warn('⚠️ Falta configurar ADMIN_EMAIL_FRONTEND en index.html. Debe coincidir con ADMIN_EMAIL en Codigo.gs.');
+  }
 });
 
 
@@ -2156,7 +2187,7 @@ async function verSugerenciaIncremento(usuarioId, nombre) {
 
 function seleccionarIncremento(usuarioId, pct, el) {
   // Desmarcar todos
-  document.querySelectorAll('#incremento-contenido .card').forEach(c => {
+  document.querySelectorAll('#modal-incremento .card').forEach(c => {
     c.style.borderColor = 'var(--border)';
   });
   // Marcar seleccionado
@@ -2218,7 +2249,7 @@ function seleccionarDias(dias, btn) {
   const semanas = 6;
   const label = document.getElementById('dias-label');
   if (label) {
-    label.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas por mes`;
+    label.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
   }
 }
 
@@ -2352,10 +2383,118 @@ async function cargarHistorial(tab) {
   }
 }
 
-// Validar configuración
-if (API_URL.includes('PEGAR_URL_AQUI')) {
-  console.warn('⚠️ Falta configurar API_URL con tu Apps Script Web App URL');
+// ═══════════════════════════════════════════════════════════════════════════════
+// COACH: INPUT MANUAL DE RMs (NUEVAS FUNCIONES)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function abrirCoachRMInput(usuarioId, nombre) {
+  coachContext.usuarioSeleccionado = { id: usuarioId, nombre };
+  document.getElementById('crmi-titulo').textContent = `RMs para ${nombre}`;
+  document.getElementById('crmi-dias-label').textContent = `${diasSemanaSeleccionados} días/semana · ${6 * diasSemanaSeleccionados} sesiones/mes · ~6 semanas`;
+
+  let html = '';
+  EJERCICIOS_RM.forEach(ej => {
+    const currentRM = coachContext.rmIndividuales[ej] || '';
+    html += `
+      <div class="form-group" style="padding:0;">
+        <label class="form-label">${ej} (kg)</label>
+        <input type="number" class="form-input" id="crmi-${ej.replace(/\s/g, '')}" 
+               inputmode="decimal" step="0.5" placeholder="0" value="${currentRM}">
+      </div>
+    `;
+  });
+  document.getElementById('crmi-form-contenido').innerHTML = html;
+  cerrarModal('modal-user-detalle');
+  abrirModal('modal-coach-rm-input');
 }
+
+async function guardarCoachRMs() {
+  const btn = document.getElementById('btn-guardar-coach-rm');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Guardando...';
+
+  const rmIndividuales = {};
+  let isValid = true;
+  EJERCICIOS_RM.forEach(ej => {
+    const inputId = `crmi-${ej.replace(/\s/g, '')}`;
+    const value = parseFloat(document.getElementById(inputId).value);
+    if (isNaN(value) || value <= 0) {
+      isValid = false;
+      // Opcional: resaltar el campo inválido
+      document.getElementById(inputId).style.borderColor = 'var(--danger)';
+    } else {
+      rmIndividuales[ej] = value;
+      document.getElementById(inputId).style.borderColor = 'var(--border)'; // Resetear color
+    }
+  });
+
+  if (!isValid) {
+    toast('Ingresa RMs válidos (números > 0) para todos los ejercicios', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Guardar RMs y Regenerar Plan';
+    return;
+  }
+
+  const r = await api('coachActualizarRMsIndividualesYRegenerarPlan', {
+    coachId: usuarioActual.ID,
+    usuarioId: coachContext.usuarioSeleccionado.id,
+    rmIndividuales: rmIndividuales,
+    diasSemana: diasSemanaSeleccionados,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '✓ Guardar RMs y Regenerar Plan';
+
+  if (r.ok) {
+    cerrarModal('modal-coach-rm-input');
+    toast(`✓ RMs actualizados para ${coachContext.usuarioSeleccionado.nombre}. Plan regenerado.`);
+    setTimeout(() => cargarCoach(), 800); // Recargar panel del coach
+  } else {
+    toast(r.error || 'Error al actualizar RMs', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMINISTRACIÓN: RESETEAR TODAS LAS TABLAS (NUEVAS FUNCIONES)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function resetAllData() {
+  if (usuarioActual.Email.toLowerCase() !== ADMIN_EMAIL_FRONTEND.toLowerCase()) {
+    toast('Acceso denegado. Solo el administrador puede resetear las tablas.', 'error');
+    return;
+  }
+
+  if (!confirm('¡ADVERTENCIA! Estás a punto de borrar TODOS los datos de TODAS las tablas (Usuarios, Sesiones, Registros, etc.). Esta acción es IRREVERSIBLE. ¿Estás ABSOLUTAMENTE seguro?')) {
+    return;
+  }
+  if (!confirm('ÚLTIMA ADVERTENCIA: Esta acción borrará TODO. No hay vuelta atrás. Escribe "BORRAR TODO" para confirmar.')) {
+    return;
+  }
+  const confirmation = prompt('Para confirmar, escribe "BORRAR TODO" (en mayúsculas):');
+  if (confirmation !== 'BORRAR TODO') {
+    toast('Confirmación incorrecta. Operación cancelada.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-reset-all-data');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Reseteando...';
+
+  const r = await api('resetAllTables', { adminId: usuarioActual.ID });
+
+  btn.disabled = false;
+  btn.innerHTML = '🗑️ Resetear Todas las Tablas';
+
+  if (r.ok) {
+    toast('✓ Todas las tablas han sido reseteadas. Se ha recreado el usuario administrador.', 'success');
+    // Forzar logout y volver a la pantalla de login
+    logout();
+    alert('Las tablas han sido reseteadas. El usuario administrador ha sido recreado. Si no recuerdas la clave, revisa los logs de Apps Script o el email de configuración.');
+  } else {
+    toast(r.error || 'Error al resetear las tablas.', 'error');
+  }
+}
+
 </script>
 
 
@@ -2423,6 +2562,44 @@ if (API_URL.includes('PEGAR_URL_AQUI')) {
       <button class="tab" onclick="switchHistorial('feedback', this)">Feedback</button>
     </div>
     <div id="historial-contenido"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
+<!-- MODAL: COACH INPUT RM (NUEVO) -->
+<div class="modal" id="modal-coach-rm-input">
+  <div class="modal-content" style="max-height: 95vh;">
+    <div class="modal-header">
+      <h2 id="crmi-titulo">RMs para Usuario</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-coach-rm-input')">✕</button>
+    </div>
+    <p style="color: var(--text-3); font-size: 12px; margin-bottom: 16px;">
+      Ingresa los RMs finales para cada ejercicio. Esto actualizará el plan del usuario.
+    </p>
+
+    <!-- Días por semana (para regenerar plan) -->
+    <div style="background: var(--surface); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+      <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">¿Cuántos días por semana entrena el usuario?</div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        ${[1,2,3,4,5,6,7].map(d => `
+          <button onclick="seleccionarDias(${d}, this)"
+            style="flex: 1; min-width: 36px; padding: 8px 4px; border-radius: 6px; font-weight: 700; font-size: 13px;
+                   background: ${d === 3 ? 'var(--primary)' : 'var(--dark)'}; 
+                   color: ${d === 3 ? 'white' : 'var(--text-3)'};
+                   border: 1px solid ${d === 3 ? 'var(--primary)' : 'var(--border)'};"
+            class="dias-btn ${d === 3 ? 'activo' : ''}">${d}</button>
+        `).join('')}
+      </div>
+      <div style="font-size: 10px; color: var(--text-3); margin-top: 8px; text-align: center;"
+           id="crmi-dias-label">3 días/semana · 18 sesiones/mes · ~6 semanas</div>
+    </div>
+
+    <div id="crmi-form-contenido"></div>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-coach-rm-input')">Cancelar</button>
+      <button class="btn btn-success" style="flex: 2;" onclick="guardarCoachRMs()" id="btn-guardar-coach-rm">
+        ✓ Guardar RMs y Regenerar Plan
+      </button>
+    </div>
   </div>
 </div>
 
