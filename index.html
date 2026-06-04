@@ -1299,9 +1299,9 @@ async function cargarPlan() {
             <div class="exercise-meta">${(s.tipoDia || '').replace(/_/g, ' ')}</div>
             ${!isBloqueada ? `
             <div style="font-size: 11px; color: var(--text-2); margin-top: 8px;">
-              ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}\
+              ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}
               ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
-            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}\
+            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}
           </div>
         `;
       });
@@ -1933,7 +1933,7 @@ async function crearUsuario() {
   }
   
   // CORRECCIÓN: Regex para validación de email en el lado del cliente
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
     toast('Email inválido', 'error');
     return;
   }
@@ -2250,6 +2250,10 @@ function seleccionarDias(dias, btn) {
   const label = document.getElementById('dias-label');
   if (label) {
     label.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
+  }
+  const crmiLabel = document.getElementById('crmi-dias-label');
+  if (crmiLabel) {
+    crmiLabel.textContent = `${dias} días/semana · ${6 * dias} sesiones/mes · ~6 semanas`;
   }
 }
 
