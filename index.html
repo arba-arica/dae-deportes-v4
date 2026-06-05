@@ -733,7 +733,7 @@
 // Esta es la URL que obtienes al desplegar tu script como una aplicación web.
 const API_URL = 'https://script.google.com/macros/s/AKfycbxf45gLjn_9rTe3ZtK4bXKHHBHnlcxDad_ZOmlLJxZtL4hZ1tr4qA6TAW1fczsp0en8/exec'; 
 // ✅ CAMBIAR: Este email debe coincidir con ADMIN_EMAIL en tu archivo Codigo.gs
-const ADMIN_EMAIL_FRONTEND = 'admin@uta.cl'; 
+const ADMIN_EMAIL_FRONTEND = 'daedeportes@gestion.uta.cl'; 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL
@@ -939,7 +939,7 @@ async function cargarDashboard() {
     return;
   }
   
-  const { asignacion, progreso, rmMaximo, rpePromedio, racha, fase } = r;
+  const { asignacion, rmMaximo, rpePromedio, racha, fase } = r;
   
   const mesActual = asignacion ? Number(asignacion.Mes_Actual || 1) : 1;
   const sesionesXMes = asignacion ? 
@@ -1104,6 +1104,10 @@ function abrirTestRMCompleto() {
   });
 
   document.getElementById('rm-form-contenido').innerHTML = html;
+  
+  // Render days selection buttons for this modal
+  renderDiasSemanaButtons('dias-semana-buttons-container-test-rm', 'dias-label', diasSemanaSeleccionados);
+
   abrirModal('modal-test-rm');
 }
 
@@ -1157,7 +1161,7 @@ async function guardarTestRMCompleto() {
       }
     }
 
-    if (!tieneAlMenosUno) {
+    if (!tieneAlmenosUno) {
       todosCompletos = false;
       document.getElementById(`rm-card-${idx}`).style.borderLeft = '3px solid var(--danger)';
     } else {
@@ -1266,7 +1270,7 @@ async function cargarPlan() {
              border: 1px solid ${completado ? 'var(--success)' : activo ? 'var(--primary)' : 'var(--border)'};">
           <div>
             <div style="font-size: 13px; font-weight: 700; color: ${completado ? 'var(--success)' : activo ? 'var(--primary)' : 'var(--text-3)'};">
-              ${completado ? '✓ ' : activo ? '▶ ' : '🔒 '}Mes ${mes}
+              ${completado ? '✓ ' : activo ? '▶' : '🔒'}Mes ${mes}
             </div>
             <div style="font-size: 10px; color: var(--text-3); margin-top: 2px;">
               ${completado ? 'Completado' : activo ? 'En curso' : 'Bloqueado — completa el mes anterior'}
@@ -1313,12 +1317,12 @@ async function cargarPlan() {
               <div class="exercise-name">Sesión ${s.numero}</div>
               ${badge}
             </div>
-            <div class="exercise-meta">${(s.tipoDia || '').replace(/_/g, ' ')}</div>
-            ${!isBloqueada ? `
-            <div style="font-size: 11px; color: var(--text-2); margin-top: 8px;">
+            <div class="exercise-meta">
+              ${(s.tipoDia || '').replace(/_/g, ' ')}
               ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}
               ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
-            </div>` : '<div style="font-size: 11px; color: var(--text-3); margin-top: 6px;">Completa el mes anterior para desbloquear</div>'}
+              ${s.ejercicios.some(e => e.notas) ? `<br><em>${e.notas}</em>` : ''}
+            </div>
           </div>
         `;
       });
@@ -1386,6 +1390,7 @@ async function cargarSesion() {
             </div>
             <div class="exercise-meta">
               ${ej.series}×${ej.repsMin}-${ej.repsMax} · ${ej.pesoSugerido}${typeof ej.pesoSugerido === 'number' ? 'kg' : ''} · ${ej.descansoSegundos}s descanso
+              ${ej.notas ? `<br><em>${ej.notas}</em>` : ''}
             </div>
           </div>
           <div style="font-size: 20px; color: ${estaCompleto ? 'var(--success)' : 'var(--primary)'};">
@@ -1908,6 +1913,10 @@ async function verDetalleUsuario(usuarioId, nombre) {
       <button class="btn btn-secondary" style="flex: 1;" onclick="abrirEnviarMensaje('${usuarioId}', '${nombre}')">💬 Mensaje</button>
       <button class="btn btn-primary" style="flex: 1;" onclick="abrirCoachRMInput('${usuarioId}', '${nombre}')">💪 Actualizar RMs</button>
     </div>
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="abrirEditarUsuario('${usuarioId}')">✏️ Editar Usuario</button>
+      <button class="btn btn-danger" style="flex: 1;" onclick="abrirEliminarUsuario('${usuarioId}', '${nombre}')">🗑️ Eliminar Usuario</button>
+    </div>
     <button class="btn btn-secondary btn-block" style="margin-top: 10px;" onclick="cerrarModal('modal-user-detalle')">Cerrar</button>
   `;
   
@@ -2108,7 +2117,7 @@ window.addEventListener('load', () => {
     console.warn('⚠️ Falta configurar API_URL con tu Apps Script Web App URL. La URL actual es un placeholder.');
   }
   // Advertencia si ADMIN_EMAIL_FRONTEND no está configurado
-  if (ADMIN_EMAIL_FRONTEND === 'admin@uta.cl') {
+  if (ADMIN_EMAIL_FRONTEND === 'daedeportes@gestion.uta.cl') {
     console.warn('⚠️ Falta configurar ADMIN_EMAIL_FRONTEND en index.html. Debe coincidir con ADMIN_EMAIL en Codigo.gs.');
   }
 });
@@ -2246,6 +2255,39 @@ async function confirmarAvanceMes(usuarioId) {
 
 let diasSemanaSeleccionados = 3;
 
+// Nueva función para renderizar los botones de selección de días
+function renderDiasSemanaButtons(containerId, labelId, initialDays) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  let buttonsHtml = '';
+  for (let d = 1; d <= 7; d++) {
+    const isActive = d === initialDays ? 'activo' : '';
+    const bgColor = d === initialDays ? 'var(--primary)' : 'var(--dark)';
+    const textColor = d === initialDays ? 'white' : 'var(--text-3)';
+    const borderColor = d === initialDays ? 'var(--primary)' : 'var(--border)';
+
+    buttonsHtml += `
+      <button onclick="seleccionarDias(${d}, this)"
+        style="flex: 1; min-width: 36px; padding: 8px 4px; border-radius: 6px; font-weight: 700; font-size: 13px;
+               background: ${bgColor}; 
+               color: ${textColor};
+               border: 1px solid ${borderColor};"
+        class="dias-btn ${isActive}">${d}</button>
+    `;
+  }
+  container.innerHTML = buttonsHtml;
+
+  // Actualizar la etiqueta inicialmente
+  const label = document.getElementById(labelId);
+  if (label) {
+    const sesXMes = 6 * initialDays;
+    const semanas = 6; // Siempre 6 semanas por mes en esta lógica
+    label.textContent = `${initialDays} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
+  }
+}
+
+
 function seleccionarDias(dias, btn) {
   diasSemanaSeleccionados = dias;
 
@@ -2261,15 +2303,18 @@ function seleccionarDias(dias, btn) {
 
   // Calcular sesiones
   const sesXMes = 6 * dias;
-  const totalSes = sesXMes * 3;
   const semanas = 6;
-  const label = document.getElementById('dias-label');
-  if (label) {
-    label.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
+  
+  // Actualizar la etiqueta para el modal de Test RM
+  const labelTestRm = document.getElementById('dias-label');
+  if (labelTestRm) {
+    labelTestRm.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
   }
-  const crmiLabel = document.getElementById('crmi-dias-label');
-  if (crmiLabel) {
-    crmiLabel.textContent = `${dias} días/semana · ${6 * dias} sesiones/mes · ~6 semanas`;
+  
+  // Actualizar la etiqueta para el modal de Coach RM Input
+  const labelCoachRm = document.getElementById('crmi-dias-label');
+  if (labelCoachRm) {
+    labelCoachRm.textContent = `${dias} días/semana · ${sesXMes} sesiones/mes · ~${semanas} semanas`;
   }
 }
 
@@ -2410,7 +2455,9 @@ async function cargarHistorial(tab) {
 function abrirCoachRMInput(usuarioId, nombre) {
   coachContext.usuarioSeleccionado = { id: usuarioId, nombre };
   document.getElementById('crmi-titulo').textContent = `RMs para ${nombre}`;
-  document.getElementById('crmi-dias-label').textContent = `${diasSemanaSeleccionados} días/semana · ${6 * diasSemanaSeleccionados} sesiones/mes · ~6 semanas`;
+  
+  // Render days selection buttons for this modal
+  renderDiasSemanaButtons('dias-semana-buttons-container-coach-rm', 'crmi-dias-label', diasSemanaSeleccionados);
 
   let html = '';
   EJERCICIOS_RM.forEach(ej => {
@@ -2569,15 +2616,8 @@ async function hardResetSpreadsheetFrontend() {
     <!-- Días por semana -->
     <div style="background: var(--surface); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
       <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">¿Cuántos días por semana entrenas?</div>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        ${[1,2,3,4,5,6,7].map(d => `
-          <button onclick="seleccionarDias(${d}, this)"
-            style="flex: 1; min-width: 36px; padding: 8px 4px; border-radius: 6px; font-weight: 700; font-size: 13px;
-                   background: ${d === 3 ? 'var(--primary)' : 'var(--dark)'}; 
-                   color: ${d === 3 ? 'white' : 'var(--text-3)'};
-                   border: 1px solid ${d === 3 ? 'var(--primary)' : 'var(--border)'};"
-            class="dias-btn ${d === 3 ? 'activo' : ''}">${d}</button>
-        `).join('')}
+      <div id="dias-semana-buttons-container-test-rm" style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <!-- Los botones se inyectarán aquí por JavaScript -->
       </div>
       <div style="font-size: 10px; color: var(--text-3); margin-top: 8px; text-align: center;"
            id="dias-label">3 días/semana · 18 sesiones/mes · ~6 semanas</div>
@@ -2636,15 +2676,8 @@ async function hardResetSpreadsheetFrontend() {
     <!-- Días por semana (para regenerar plan) -->
     <div style="background: var(--surface); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
       <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">¿Cuántos días por semana entrena el usuario?</div>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        ${[1,2,3,4,5,6,7].map(d => `
-          <button onclick="seleccionarDias(${d}, this)"
-            style="flex: 1; min-width: 36px; padding: 8px 4px; border-radius: 6px; font-weight: 700; font-size: 13px;
-                   background: ${d === 3 ? 'var(--primary)' : 'var(--dark)'}; 
-                   color: ${d === 3 ? 'white' : 'var(--text-3)'};
-                   border: 1px solid ${d === 3 ? 'var(--primary)' : 'var(--border)'};"
-            class="dias-btn ${d === 3 ? 'activo' : ''}">${d}</button>
-        `).join('')}
+      <div id="dias-semana-buttons-container-coach-rm" style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <!-- Los botones se inyectarán aquí por JavaScript -->
       </div>
       <div style="font-size: 10px; color: var(--text-3); margin-top: 8px; text-align: center;"
            id="crmi-dias-label">3 días/semana · 18 sesiones/mes · ~6 semanas</div>
@@ -2656,6 +2689,61 @@ async function hardResetSpreadsheetFrontend() {
       <button class="btn btn-success" style="flex: 2;" onclick="guardarCoachRMs()" id="btn-guardar-coach-rm">
         ✓ Guardar RMs y Regenerar Plan
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR USUARIO (Coach) -->
+<div class="modal" id="modal-edit-user">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="eu-titulo">Editar Usuario</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-edit-user')">✕</button>
+    </div>
+    <div class="form-group" style="padding:0;">
+      <label class="form-label">Nombre *</label>
+      <input type="text" class="form-input" id="eu-nombre" placeholder="Nombre">
+    </div>
+    <div class="form-group" style="padding:0;">
+      <label class="form-label">Apellido</label>
+      <input type="text" class="form-input" id="eu-apellido" placeholder="Apellido">
+    </div>
+    <div class="form-group" style="padding:0;">
+      <label class="form-label">Email *</label>
+      <input type="email" class="form-input" id="eu-email" placeholder="email@ejemplo.com" inputmode="email">
+    </div>
+    <div style="display: flex; gap: 10px; padding: 0; margin-bottom: 14px;">
+      <div style="flex: 1;">
+        <label class="form-label">Peso (kg)</label>
+        <input type="number" class="form-input" id="eu-peso" inputmode="decimal" placeholder="70">
+      </div>
+      <div style="flex: 1;">
+        <label class="form-label">Talla (cm)</label>
+        <input type="number" class="form-input" id="eu-talla" inputmode="numeric" placeholder="175">
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-edit-user')">Cancelar</button>
+      <button class="btn btn-success" style="flex: 1.5;" onclick="guardarEdicionUsuario()" id="btn-edit-user">✓ Guardar Cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ELIMINAR USUARIO (Coach) -->
+<div class="modal" id="modal-delete-user">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🗑️ Eliminar Usuario</h2>
+      <button class="modal-close" onclick="cerrarModal('modal-delete-user')">✕</button>
+    </div>
+    <p style="color: var(--danger); margin-bottom: 16px;">
+      Estás a punto de **inactivar** al usuario <strong id="du-nombre"></strong>.
+      Esto significa que no podrá iniciar sesión, pero sus datos se mantendrán para tu registro.
+      Esta acción es irreversible.
+    </p>
+    <div style="display: flex; gap: 10px;">
+      <button class="btn btn-secondary" style="flex: 1;" onclick="cerrarModal('modal-delete-user')">Cancelar</button>
+      <button class="btn btn-danger" style="flex: 1.5;" onclick="confirmarEliminarUsuario()" id="btn-delete-user">✓ Confirmar Inactivación</button>
     </div>
   </div>
 </div>
