@@ -86,7 +86,7 @@
     .content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 90px; }
     .screen { display: none; animation: fadeIn .25s ease-out; }
     .screen.active { display: block; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { transform: translateY(0); } }
     
     .bottom-nav {
       position: fixed; bottom: 0; left: 0; right: 0;
@@ -313,7 +313,7 @@
       font-size: 13px;
       z-index: 5000;
       animation: slideUp .3s ease;
-      box-shadow: 0 4px 12px rgba(0,0,0,.4);
+      box-shadow: 0 44px 12px rgba(0,0,0,.4);
       text-align: center;
     }
     .toast.error { background: var(--danger); }
