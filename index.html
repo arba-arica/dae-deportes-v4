@@ -742,7 +742,7 @@ let usuarioActual = null;
 let sesionActualData = null;
 let ejercicioActual = { idx: 0, nombre: '', totalSeries: 0, descanso: 60 };
 let serieActual = 1;
-let coachContext = { usuarioSeleccionado: null, rmIndividuales: {} }; // Añadido rmIndividuales para precarga
+let coachContext = { usuarioSeleccionado: null, rmIndividuales: {}, diasSemana: 3 }; // Añadido rmIndividuales y diasSemana para precarga
 
 // Timer
 let timer = {
@@ -1829,6 +1829,8 @@ async function verDetalleUsuario(usuarioId, nombre) {
   }
   
   coachContext.rmIndividuales = r.rmIndividuales || {}; // Guardar RMs individuales para el modal de edición
+  coachContext.diasSemana = r.asignacion ? Number(r.asignacion.Dias_Semana) : 3; // Guardar días por semana
+  
   let html = `
     <div class="mini-stats" style="margin-bottom: 16px;">
       <div class="mini-stat">
@@ -2456,8 +2458,8 @@ function abrirCoachRMInput(usuarioId, nombre) {
   coachContext.usuarioSeleccionado = { id: usuarioId, nombre };
   document.getElementById('crmi-titulo').textContent = `RMs para ${nombre}`;
   
-  // Render days selection buttons for this modal
-  renderDiasSemanaButtons('dias-semana-buttons-container-coach-rm', 'crmi-dias-label', diasSemanaSeleccionados);
+  // Render days selection buttons for this modal, using the stored daysSemana
+  renderDiasSemanaButtons('dias-semana-buttons-container-coach-rm', 'crmi-dias-label', coachContext.diasSemana);
 
   let html = '';
   EJERCICIOS_RM.forEach(ej => {
@@ -2520,6 +2522,116 @@ async function guardarCoachRMs() {
     toast(r.error || 'Error al actualizar RMs', 'error');
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COACH: EDITAR USUARIO (NUEVAS FUNCIONES)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function abrirEditarUsuario(usuarioId) {
+  coachContext.usuarioSeleccionado = { id: usuarioId }; // Store selected user ID
+  document.getElementById('eu-titulo').textContent = `Editar Usuario`;
+  document.getElementById('eu-nombre').value = '';
+  document.getElementById('eu-apellido').value = '';
+  document.getElementById('eu-email').value = '';
+  document.getElementById('eu-peso').value = '';
+  document.getElementById('eu-talla').value = '';
+
+  const r = await api('getUsuario', { usuarioId: usuarioId });
+  if (r.ok) {
+    const user = r.usuario;
+    document.getElementById('eu-titulo').textContent = `Editar ${user.Nombre} ${user.Apellido || ''}`;
+    document.getElementById('eu-nombre').value = user.Nombre;
+    document.getElementById('eu-apellido').value = user.Apellido;
+    document.getElementById('eu-email').value = user.Email;
+    document.getElementById('eu-peso').value = user.Peso_kg;
+    document.getElementById('eu-talla').value = user.Talla_cm;
+  } else {
+    toast(r.error || 'Error al cargar datos del usuario', 'error');
+    return;
+  }
+  cerrarModal('modal-user-detalle');
+  abrirModal('modal-edit-user');
+}
+
+async function guardarEdicionUsuario() {
+  const btn = document.getElementById('btn-edit-user');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Guardando...';
+
+  const nombre = document.getElementById('eu-nombre').value.trim();
+  const apellido = document.getElementById('eu-apellido').value.trim();
+  const email = document.getElementById('eu-email').value.trim();
+  const pesoKg = document.getElementById('eu-peso').value.trim();
+  const tallaCm = document.getElementById('eu-talla').value.trim();
+
+  if (!nombre || !email) {
+    toast('Nombre y email son obligatorios', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Guardar Cambios';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('Email inválido', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Guardar Cambios';
+    return;
+  }
+
+  const r = await api('editarUsuario', {
+    coachId: usuarioActual.ID,
+    usuarioId: coachContext.usuarioSeleccionado.id,
+    nombre,
+    apellido,
+    email,
+    pesoKg,
+    tallaCm,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '✓ Guardar Cambios';
+
+  if (r.ok) {
+    cerrarModal('modal-edit-user');
+    toast('✓ Usuario actualizado correctamente');
+    setTimeout(() => cargarCoach(), 800); // Recargar panel del coach
+  } else {
+    toast(r.error || 'Error al actualizar usuario', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COACH: ELIMINAR USUARIO (NUEVAS FUNCIONES)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function abrirEliminarUsuario(usuarioId, nombre) {
+  coachContext.usuarioSeleccionado = { id: usuarioId, nombre }; // Store selected user ID and name
+  document.getElementById('du-nombre').textContent = nombre;
+  cerrarModal('modal-user-detalle');
+  abrirModal('modal-delete-user');
+}
+
+async function confirmarEliminarUsuario() {
+  const btn = document.getElementById('btn-delete-user');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Inactivando...';
+
+  const r = await api('eliminarUsuario', {
+    coachId: usuarioActual.ID,
+    usuarioId: coachContext.usuarioSeleccionado.id,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '✓ Confirmar Inactivación';
+
+  if (r.ok) {
+    cerrarModal('modal-delete-user');
+    toast(`✓ Usuario ${coachContext.usuarioSeleccionado.nombre} inactivado.`);
+    setTimeout(() => cargarCoach(), 800); // Recargar panel del coach
+  } else {
+    toast(r.error || 'Error al inactivar usuario', 'error');
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMINISTRACIÓN: RESETEAR TODAS LAS TABLAS (NUEVAS FUNCIONES)
