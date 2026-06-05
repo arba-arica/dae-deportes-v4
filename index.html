@@ -1321,7 +1321,7 @@ async function cargarPlan() {
               ${(s.tipoDia || '').replace(/_/g, ' ')}
               ${s.ejercicios.slice(0, 3).map(e => `• ${e.nombre} (${e.pesoSugerido}${typeof e.pesoSugerido === 'number' ? 'kg' : ''})`).join('<br>')}
               ${s.ejercicios.length > 3 ? `<br>+ ${s.ejercicios.length - 3} más` : ''}
-              ${s.ejercicios.some(e => e.notas) ? `<br><em>${e.notas}</em>` : ''}
+              ${s.ejercicios.filter(e => e.notas).map(e => `<br><em>${e.nombre}: ${e.notas}</em>`).join('')}
             </div>
           </div>
         `;
