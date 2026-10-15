@@ -191,6 +191,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.error { background: var(--danger); }
 #toast.success { background: var(--success); }
+#toast.info { background: #2563eb; }
 
 /* ── LOGIN ── */
 .login-wrap { display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-top) + 40px) 24px 40px; min-height: 100dvh; }
@@ -811,7 +812,26 @@ async function loadSesion(){
     return;
   }
   SESION=r.sesion;
+  // ── Recuperación tras cierre ──────────────────────────────────
+  // Si hay series ya registradas en el backend para esta sesión,
+  // restaurar SERIES_HOY para que el estado visual sea correcto.
+  const seriesReg=r.sesion.series_registradas||{};
+  const ejsRaw=r.sesion.ejercicios||[];
+  ejsRaw.forEach((ej,i)=>{
+    const nom=ej.nombre||ej.Nombre||'';
+    if(seriesReg[nom]&&seriesReg[nom].length>0){
+      // Ordenar por serieNum para restaurar en orden
+      const sorted=[...seriesReg[nom]].sort((a,b)=>a.serieNum-b.serieNum);
+      SERIES_HOY[i]=sorted.map(s=>({
+        peso: s.pesoKg||0,
+        reps: s.repsRealizadas||0,
+      }));
+    }
+  });
   renderSesion();
+  // Mostrar aviso si se recuperó progreso previo
+  const totalRecuperadas=Object.values(SERIES_HOY).reduce((acc,arr)=>acc+(arr.length||0),0);
+  if(totalRecuperadas>0) toast(`Sesión recuperada (${totalRecuperadas} series previas)`, 'info');
 }
 
 function normEj(ej){
@@ -873,7 +893,7 @@ function renderSesion(){
 }
 
 // ── SERIE ──
-function abrirSerie(i){
+async function abrirSerie(i){
   EJ_ACTIVO=i;
   const ej=normEj(SESION.ejercicios[i]);
   const series=SERIES_HOY[i]||[];
@@ -887,6 +907,15 @@ function abrirSerie(i){
     iniciarTimer(ej.tiempoSeg||180, 'Trote de cierre');
     if(!SERIES_HOY[EJ_ACTIVO]) SERIES_HOY[EJ_ACTIVO]=[];
     SERIES_HOY[EJ_ACTIVO].push({peso:'trote',reps:0,tiempo:ej.tiempoSeg});
+    await api('registrarSerie',{
+      usuarioId:U.ID,
+      asignacionId:SESION.asignacion?.ID||SESION.asignacion?.id||'',
+      sesionNum:SESION.numero,
+      ejercicioNombre:ej.nombre,
+      serieNum:1,
+      pesoKg:0,
+      repsRealizadas:0,
+    });
     renderSesion();
     return;
   }
@@ -919,16 +948,23 @@ function abrirSerie(i){
 
 async function guardarSerie(){
   const ej=normEj(SESION.ejercicios[EJ_ACTIVO]);
-  const peso=parseFloat(document.getElementById('serie-peso').value);
-  const reps=parseInt(document.getElementById('serie-reps').value);
-  if(!peso||!reps) return toast('Ingresa peso y repeticiones','error');
+  const pesoKg=parseFloat(document.getElementById('serie-peso').value);
+  const repsRealizadas=parseInt(document.getElementById('serie-reps').value);
+  if(!pesoKg||!repsRealizadas) return toast('Ingresa peso y repeticiones','error');
   cerrarSheet('serie');
   if(!SERIES_HOY[EJ_ACTIVO]) SERIES_HOY[EJ_ACTIVO]=[];
-  SERIES_HOY[EJ_ACTIVO].push({peso,reps});
-  await api('registrarSerie',{usuarioId:U.ID,sesionId:SESION.id,ejercicioNombre:ej.nombre,serieNum:SERIES_HOY[EJ_ACTIVO].length,peso,reps});
+  SERIES_HOY[EJ_ACTIVO].push({peso:pesoKg,reps:repsRealizadas});
+  await api('registrarSerie',{
+    usuarioId:U.ID,
+    asignacionId:SESION.asignacion?.ID||SESION.asignacion?.id||'',
+    sesionNum:SESION.numero,
+    ejercicioNombre:ej.nombre,
+    serieNum:SERIES_HOY[EJ_ACTIVO].length,
+    pesoKg,
+    repsRealizadas,
+  });
   toast('Serie registrada','success');
   renderSesion();
-  // Si hay más series, abrir timer
   if(SERIES_HOY[EJ_ACTIVO].length<ej.series){
     iniciarTimer(ej.descansoSeg||60, `${ej.nombre} — Serie ${SERIES_HOY[EJ_ACTIVO].length+1}/${ej.series}`);
   }
@@ -939,7 +975,15 @@ async function guardarSerieCorporal(){
   cerrarSheet('serie');
   if(!SERIES_HOY[EJ_ACTIVO]) SERIES_HOY[EJ_ACTIVO]=[];
   SERIES_HOY[EJ_ACTIVO].push({peso:'corporal',reps:0});
-  await api('registrarSerie',{usuarioId:U.ID,sesionId:SESION.id,ejercicioNombre:ej.nombre,serieNum:SERIES_HOY[EJ_ACTIVO].length,peso:0,reps:0});
+  await api('registrarSerie',{
+    usuarioId:U.ID,
+    asignacionId:SESION.asignacion?.ID||SESION.asignacion?.id||'',
+    sesionNum:SESION.numero,
+    ejercicioNombre:ej.nombre,
+    serieNum:SERIES_HOY[EJ_ACTIVO].length,
+    pesoKg:0,
+    repsRealizadas:0,
+  });
   toast('Serie registrada','success');
   renderSesion();
   if(SERIES_HOY[EJ_ACTIVO].length<ej.series){
@@ -974,7 +1018,7 @@ async function enviarFeedback(){
   const nota=document.getElementById('fb-nota').value;
   cerrarSheet('feedback');
   await api('guardarFeedback',{usuarioId:U.ID,sesionId:SESION?.id,rpe,fatiga,nota});
-  await api('finalizarSesion',{usuarioId:U.ID,sesionId:SESION?.id});
+  await api('finalizarSesion',{usuarioId:U.ID,sesionNum:SESION?.numero});
   SESION=null; PLAN=null; DASH=null;
   toast('¡Sesión completada! 🎉','success');
   goTo('dashboard');
