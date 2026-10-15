@@ -480,10 +480,15 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
     </div>
     <div class="field">
       <label class="field-label">Días de entrenamiento por semana</label>
-      <select class="input" id="cu-dias">
+      <select class="input" id="cu-dias" onchange="recalcSesiones()">
         <option value="2">2 días</option>
         <option value="3" selected>3 días</option>
       </select>
+    </div>
+    <div class="field">
+      <label class="field-label">Total de sesiones del ciclo <span style="font-weight:400;color:var(--text3)">(manual)</span></label>
+      <input class="input" id="cu-sesiones" type="number" min="6" max="120" placeholder="ej: 36"/>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px;" id="cu-sesiones-hint">Con 3 días/semana en 6 semanas = 18 sesiones</div>
     </div>
     <button class="btn btn-primary" onclick="crearUsuario()">Crear estudiante</button>
   </div>
@@ -1109,59 +1114,107 @@ function recalcRM(ejKey){
   if(total) total.textContent=mejor>0?mejor+' kg':'—';
 }
 
-function abrirEditRMs(userId){
-  const ejerciciosRM=['Sentadilla','Prensa de Piernas','Press Banca','Jalón Polea Alta','Curl Bíceps','Press Militar'];
+// Lista maestra de ejercicios con RM (sincronizada con MAPA_RM del backend)
+const LISTA_RM_MAESTRA=[
+  'Sentadilla','Prensa de Piernas','Peso Muerto Rumano',
+  'Press Banca','Press Banca Inclinado',
+  'Jalón Polea Alta','Remo en Polea','Press Hombro',
+  'Curl Bíceps','Curl Tríceps',
+];
+
+function renderFilaRMs(ejerciciosActivos){
+  const body=document.getElementById('rm-edit-body');
+  if(!body) return;
+  const userId=body.dataset.userId;
 
   let html=`<div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.5;">
-    Ingresa los 3 intentos del test de fuerza (peso levantado + repeticiones logradas).<br>
-    El RM se calcula automáticamente con la fórmula de Brzycki.
+    Ingresa los 3 intentos del test de fuerza (peso + reps).<br>El RM se calcula con Brzycki automáticamente.
   </div>`;
 
-  ejerciciosRM.forEach(ej=>{
+  ejerciciosActivos.forEach(ej=>{
     const key=ej.replace(/\s/g,'-');
     html+=`
-    <div style="background:var(--bg);border-radius:var(--r-sm);padding:14px;margin-bottom:12px;">
-      <div style="font-weight:700;font-size:15px;margin-bottom:10px;">🏋️ ${ej}</div>
+    <div style="background:var(--bg);border-radius:var(--r-sm);padding:14px;margin-bottom:12px;" id="bloque-rm-${key}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-weight:700;font-size:15px;">🏋️ ${ej}</span>
+        <button onclick="quitarEjercicioRM('${key}')" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:2px 6px;">✕</button>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
         ${[1,2,3].map(i=>`
         <div>
           <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;">INTENTO ${i}</div>
-          <div style="display:flex;gap:4px;margin-bottom:4px;">
-            <input class="input" id="rm-kg-${key}-${i}" type="number" step="0.5" min="0" placeholder="kg"
-              style="width:100%;font-size:14px;padding:6px 8px;"
-              oninput="recalcRM('${key}')"/>
-          </div>
-          <div style="display:flex;gap:4px;margin-bottom:4px;">
-            <input class="input" id="rm-rp-${key}-${i}" type="number" step="1" min="1" max="20" placeholder="reps"
-              style="width:100%;font-size:14px;padding:6px 8px;"
-              oninput="recalcRM('${key}')"/>
-          </div>
+          <input class="input" id="rm-kg-${key}-${i}" type="number" step="0.5" min="0" placeholder="kg"
+            style="width:100%;font-size:14px;padding:6px 8px;margin-bottom:4px;"
+            oninput="recalcRM('${key}')"/>
+          <input class="input" id="rm-rp-${key}-${i}" type="number" step="1" min="1" max="20" placeholder="reps"
+            style="width:100%;font-size:14px;padding:6px 8px;margin-bottom:4px;"
+            oninput="recalcRM('${key}')"/>
           <div style="font-size:11px;color:var(--text3);text-align:center;">
-            RM est: <span id="rm-est-${key}-${i}" style="font-weight:700;color:var(--primary);">—</span>
+            RM: <span id="rm-est-${key}-${i}" style="font-weight:700;color:var(--primary);">—</span>
           </div>
         </div>`).join('')}
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;">
         <span style="font-size:13px;color:var(--text2);">RM calculado (mejor intento)</span>
         <span id="rm-total-${key}" style="font-size:17px;font-weight:800;color:var(--primary);">—</span>
       </div>
     </div>`;
   });
 
+  // Selector para agregar ejercicio de la lista maestra que no esté activo
+  const disponibles=LISTA_RM_MAESTRA.filter(e=>!ejerciciosActivos.includes(e));
+  if(disponibles.length>0){
+    html+=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <select class="input" id="rm-agregar-sel" style="flex:1;font-size:14px;">
+        <option value="">— Agregar estación —</option>
+        ${disponibles.map(e=>`<option value="${e}">${e}</option>`).join('')}
+      </select>
+      <button class="btn btn-secondary" style="white-space:nowrap;padding:10px 14px;font-size:13px;" onclick="agregarEjercicioRM('${userId}')">+ Agregar</button>
+    </div>`;
+  }
+
   html+=`<button class="btn btn-primary" style="margin-top:4px;" onclick="guardarRMs('${userId}')">💾 Guardar RMs y regenerar plan</button>`;
-  document.getElementById('rm-edit-body').innerHTML=html;
+  body.innerHTML=html;
+  body.dataset.activos=JSON.stringify(ejerciciosActivos);
+}
+
+function quitarEjercicioRM(key){
+  const body=document.getElementById('rm-edit-body');
+  let activos=JSON.parse(body.dataset.activos||'[]');
+  const nombre=LISTA_RM_MAESTRA.find(e=>e.replace(/\s/g,'-')===key)||key.replace(/-/g,' ');
+  activos=activos.filter(e=>e!==nombre);
+  renderFilaRMs(activos);
+}
+
+function agregarEjercicioRM(userId){
+  const sel=document.getElementById('rm-agregar-sel');
+  if(!sel||!sel.value) return;
+  const body=document.getElementById('rm-edit-body');
+  let activos=JSON.parse(body.dataset.activos||'[]');
+  if(!activos.includes(sel.value)) activos.push(sel.value);
+  renderFilaRMs(activos);
+}
+
+function abrirEditRMs(userId){
+  const body=document.getElementById('rm-edit-body');
+  body.dataset.userId=userId;
+  renderFilaRMs([...LISTA_RM_MAESTRA]);
   abrirSheet('rm-edit');
 }
 
 async function guardarRMs(userId){
-  const ejerciciosRM=['Sentadilla','Prensa de Piernas','Press Banca','Jalón Polea Alta','Curl Bíceps','Press Militar'];
+  const body=document.getElementById('rm-edit-body');
+  const activos=JSON.parse(body.dataset.activos||'[]');
   const rms={};
-  ejerciciosRM.forEach(ej=>{
+  activos.forEach(ej=>{
     const key=ej.replace(/\s/g,'-');
     let mejor=0;
     for(let i=1;i<=3;i++){
-      const kg=parseFloat(document.getElementById('rm-kg-'+key+'-'+i).value)||0;
-      const rp=parseInt(document.getElementById('rm-rp-'+key+'-'+i).value)||0;
+      const elKg=document.getElementById('rm-kg-'+key+'-'+i);
+      const elRp=document.getElementById('rm-rp-'+key+'-'+i);
+      if(!elKg||!elRp) continue;
+      const kg=parseFloat(elKg.value)||0;
+      const rp=parseInt(elRp.value)||0;
       const est=brzycki(kg,rp);
       if(est>mejor) mejor=est;
     }
@@ -1265,6 +1318,12 @@ async function ejecutarEliminarUsuario(userId){
 }
 
 // ── CREAR USUARIO ──
+function recalcSesiones(){
+  const dias=parseInt(document.getElementById('cu-dias').value)||3;
+  const hint=document.getElementById('cu-sesiones-hint');
+  if(hint) hint.textContent=`Con ${dias} días/semana en 6 semanas = ${dias*6} sesiones`;
+}
+
 async function crearUsuario(){
   const nombre=document.getElementById('cu-nombre').value.trim();
   const apellido=document.getElementById('cu-apellido').value.trim();
@@ -1272,8 +1331,9 @@ async function crearUsuario(){
   const peso=document.getElementById('cu-peso').value;
   const talla=document.getElementById('cu-talla').value;
   const dias=document.getElementById('cu-dias').value;
+  const sesionesTotal=parseInt(document.getElementById('cu-sesiones').value)||0;
   if(!nombre||!email) return toast('Nombre y correo son obligatorios','error');
-  const r=await api('crearUsuario',{coachId:U.ID,nombre,apellido,email,pesoKg:peso,tallaCm:talla,diasSemana:dias});
+  const r=await api('crearUsuario',{coachId:U.ID,nombre,apellido,email,pesoKg:peso,tallaCm:talla,diasSemana:dias,sesionesTotal:sesionesTotal||undefined});
   if(!r.ok) return toast(r.error,'error');
   cerrarSheet('crear-user');
   toast(`Usuario creado. Contraseña: ${r.claveGenerada}`,'success');
