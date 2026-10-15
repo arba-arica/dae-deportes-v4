@@ -542,6 +542,19 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   </div>
 </div>
 
+<!-- Sheet: Asignar plan -->
+<div class="sheet-overlay" id="ov-asignar-plan" onclick="cerrarSheet('asignar-plan')"></div>
+<div class="sheet" id="sheet-asignar-plan">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <span class="sheet-title">Asignar plan de entrenamiento</span>
+    <button class="sheet-close" onclick="cerrarSheet('asignar-plan')">✕</button>
+  </div>
+  <div class="sheet-body" id="asignar-plan-body">
+    <!-- populated dynamically -->
+  </div>
+</div>
+
 <!-- Sheet: Cambiar contraseña -->
 <div class="sheet-overlay" id="ov-cambiar-pass" onclick="cerrarSheet('cambiar-pass')"></div>
 <div class="sheet" id="sheet-cambiar-pass">
@@ -1111,14 +1124,25 @@ async function verDetalle(userId){
       <div class="card-title" style="padding:12px 0 8px 0;">RMs individuales</div>
       ${rmsHtml||'<div style="color:var(--text3);font-size:14px;padding:8px 0;">Sin test RM registrado</div>'}
     </div>
-    ${rmsHtml?`<div style="padding:0 16px 8px;"><button class="btn btn-secondary btn-sm" onclick="abrirEditRMs('${userId}')">✏️ Editar RMs</button></div>`:''}
+    <div style="padding:0 16px 8px;"><button class="btn btn-secondary btn-sm" onclick="abrirEditRMs('${userId}')">🏋️ ${rmsHtml?'Editar RMs':'Registrar RMs'}</button></div>
     ${fb.length?`<div class="divider"></div><div style="padding:0 16px;"><div class="card-title" style="padding:12px 0 8px 0;">Feedback reciente</div>${fbHtml}</div>`:''}
     <div class="divider"></div>
-    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
-      <button class="btn btn-primary" onclick="abrirAvanzarMes('${userId}')">📈 Avanzar al siguiente mes</button>
-      <button class="btn btn-secondary" onclick="abrirEditRMs('${userId}')">🏋️ Actualizar RMs y regenerar plan</button>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;" id="detalle-acciones-${userId}">
     </div>
   `;
+  // Rellenar botones de acción según estado del alumno
+  const tieneAsig=(historial.asignaciones&&historial.asignaciones.length>0)||r.sesionesCompletadas>0;
+  const btnAcciones=document.getElementById('detalle-acciones-'+userId);
+  if(btnAcciones){
+    let bhtml='';
+    if(tieneAsig){
+      bhtml+=`<button class="btn btn-primary" onclick="abrirAvanzarMes('${userId}')">📈 Avanzar al siguiente mes</button>`;
+    } else {
+      bhtml+=`<button class="btn btn-primary" onclick="abrirAsignarPlan('${userId}')">📋 Asignar plan de entrenamiento</button>`;
+    }
+    bhtml+=`<button class="btn btn-secondary" onclick="abrirAsignarPlan('${userId}')">📋 ${tieneAsig?'Reasignar plan':'Asignar plan'}</button>`;
+    btnAcciones.innerHTML=bhtml;
+  }
 }
 
 // ── Fórmula Brzycki ──────────────────────────────────────────
@@ -1285,6 +1309,78 @@ async function confirmarAvanzar(userId){
   toast(`Mes ${r.mesNuevo||'siguiente'} iniciado con +${pct}% de carga 🎉`,'success');
   COACH_USERS=[];
   loadCoach();
+}
+
+// ── ASIGNAR PLAN ──
+function abrirAsignarPlan(userId){
+  const u=COACH_USERS.find(x=>x.id===userId)||{id:userId};
+  const diasDef=3;
+  document.getElementById('asignar-plan-body').innerHTML=`
+    <p style="font-size:14px;color:var(--text2);margin-bottom:12px;">Asignar plan inicial a <strong>${u.nombre||''} ${u.apellido||''}</strong>.</p>
+    <div class="field">
+      <label class="field-label">Tipo de plan</label>
+      <select class="input" id="ap-tipo" onchange="recalcSesionesAsig()">
+        <option value="Ciclo">Ciclo (con RMs — metodología Baker)</option>
+        <option value="Adaptacion">Adaptación (sin RMs — inicio gradual)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label">Días de entrenamiento por semana</label>
+      <select class="input" id="ap-dias" onchange="recalcSesionesAsig()">
+        <option value="2">2 días/semana</option>
+        <option value="3" selected>3 días/semana</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label">Total de sesiones</label>
+      <input class="input" id="ap-sesiones" type="number" min="4" max="36" value="18" inputmode="numeric"/>
+      <div id="ap-sesiones-hint" style="font-size:12px;color:var(--text3);margin-top:4px;">3 días/semana × 6 semanas = 18 sesiones</div>
+    </div>
+    <div class="field">
+      <label class="field-label">Fecha de inicio</label>
+      <input class="input" id="ap-fecha" type="date" value="${new Date().toISOString().split('T')[0]}"/>
+    </div>
+    <button class="btn btn-primary" onclick="confirmarAsignarPlan('${userId}')">✅ Asignar plan</button>
+  `;
+  abrirSheet('asignar-plan');
+}
+
+function recalcSesionesAsig(){
+  const dias=parseInt(document.getElementById('ap-dias')?.value)||3;
+  const tipo=document.getElementById('ap-tipo')?.value;
+  const hint=document.getElementById('ap-sesiones-hint');
+  const inp=document.getElementById('ap-sesiones');
+  if(tipo==='Adaptacion'){
+    if(inp) inp.value=6;
+    if(hint) hint.textContent='Adaptación: 6 sesiones recomendadas';
+  } else {
+    const calc=dias*6;
+    if(inp) inp.value=calc;
+    if(hint) hint.textContent=`${dias} días/semana × 6 semanas = ${calc} sesiones`;
+  }
+}
+
+async function confirmarAsignarPlan(userId){
+  const tipo=document.getElementById('ap-tipo').value;
+  const dias=parseInt(document.getElementById('ap-dias').value)||3;
+  const sesiones=parseInt(document.getElementById('ap-sesiones').value)||18;
+  const fecha=document.getElementById('ap-fecha').value;
+  cerrarSheet('asignar-plan');
+  const payload={
+    usuarioId:userId, coachId:U.ID,
+    tipo, diasSemana:dias,
+    sesiones: tipo==='Adaptacion'?sesiones:undefined,
+    sesionesTotal: tipo==='Ciclo'?sesiones:undefined,
+    numero:1, fechaInicio:fecha,
+    notas:`Plan asignado por coach el ${new Date().toLocaleDateString('es-CL')}`
+  };
+  const r=await api('asignar',payload);
+  if(!r.ok) return toast(r.error||'No se pudo asignar el plan','error');
+  toast(`Plan ${tipo} asignado ✓ — ${sesiones} sesiones, ${dias} días/semana`,'success');
+  // Regresar al detalle actualizado
+  COACH_USERS=[];
+  await loadCoach();
+  await verDetalle(userId);
 }
 
 // ── EDITAR USUARIO ──
