@@ -729,46 +729,58 @@ async function loadDash(){
 
 // ── PLAN ──
 async function loadPlan(){
-  // obtenerPlanCompleto no existe en backend v2; usar getAsignacion + getSesionHoy
-  const [ra,rs]=await Promise.all([
-    api('getAsignacion',{usuarioId:U.ID}),
-    api('getSesionHoy',{usuarioId:U.ID})
-  ]);
-  // Build a unified r object from the two responses
-  const asig=ra.ok?ra.asignacion||ra:{};
-  const sesHoy=rs.ok?rs.sesion||rs:{};
-  const r={
-    ok: ra.ok||false,
-    mesActual: Number(asig.Mes_Actual||asig.mes_actual||1),
-    sesionActual: Number(asig.Sesion_Actual||asig.sesion_actual||sesHoy.numero||1),
-    sesiones: (asig.sesiones||[]),
-  };
-  if(!r.ok) return;
-  PLAN=r;
-  const sesActual=r.sesionActual||4;
+  const rp=await api('obtenerPlanCompleto',{usuarioId:U.ID});
+  if(!rp.ok){
+    // fallback: construir plan desde getAsignacion
+    const ra=await api('getAsignacion',{usuarioId:U.ID});
+    const asig=ra.ok&&ra.asignacion?ra.asignacion:null;
+    if(!asig){
+      document.getElementById('plan-content').innerHTML=`<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">Sin plan asignado</div><div class="empty-sub">El coach debe asignarte un ciclo de entrenamiento.</div></div>`;
+      return;
+    }
+    const mesActual=Number(asig.Numero||1);
+    const sesComp=Number(asig.Sesiones_Completadas||0);
+    const sesTotal=Number(asig.Sesiones_Total||18);
+    const sesActual=Number(asig.Sesion_Actual||1);
+    // Construir sesiones solo para el mes activo
+    const sesiones=[];
+    for(let n=1;n<=sesTotal;n++) sesiones.push({numero:n,mes:mesActual,estado:n<=sesComp?'Completada':'Pendiente'});
+    PLAN={ok:true,mesActual,sesionActual:sesActual,sesiones};
+    _renderPlan(PLAN);
+    return;
+  }
+  PLAN=rp;
+  _renderPlan(PLAN);
+}
+
+function _renderPlan(r){
+  const sesActual=r.sesionActual||1;
+  const mesActual=r.mesActual||Number((r.asignacion||{}).Numero)||1;
   const meses=[1,2,3];
   let html='<div style="padding:16px 0 0;">';
   html+=`<div class="section-header"><span class="section-title">Plan de entrenamiento</span></div>`;
   meses.forEach(mes=>{
     const sesMes=(r.sesiones||[]).filter(s=>s.mes===mes);
     const done=sesMes.filter(s=>s.estado==='Completada').length;
-    const isActive=r.mesActual===mes;
-    const isLocked=mes>r.mesActual;
+    const isActive=mesActual===mes;
+    const isLocked=mes>mesActual;
     html+=`<div class="plan-month">
       <div class="month-header">
         <div class="month-num ${isLocked?'locked':isActive?'':'done'}">${isLocked?'🔒':isActive?mes:'✓'}</div>
         <div>
           <div class="month-title">Mes ${mes}</div>
-          <div class="month-sub">${isLocked?'Bloqueado':isActive?`${done} de ${sesMes.length} sesiones`:done+' sesiones completadas'}</div>
+          <div class="month-sub">${isLocked?'Bloqueado':isActive?`${done} de ${sesMes.length} sesiones completadas`:(done>0?done+' sesiones completadas':'Sin sesiones aún')}</div>
         </div>
       </div>`;
-    if(!isLocked){
+    if(!isLocked && sesMes.length>0){
       html+=`<div class="sessions-grid">`;
       sesMes.forEach(s=>{
         const cls=s.estado==='Completada'?'done':s.numero===sesActual?'active':'pending';
         html+=`<div class="ses-dot ${cls}" title="Sesión ${s.numero}">${s.numero}</div>`;
       });
       html+=`</div>`;
+    } else if(!isLocked && sesMes.length===0){
+      html+=`<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">Sin sesiones registradas aún</div>`;
     }
     html+=`</div>`;
     if(mes<3) html+=`<div class="divider"></div>`;
@@ -781,16 +793,22 @@ async function loadPlan(){
 async function loadSesion(){
   SERIES_HOY={};
   const r=await api('getSesionHoy',{usuarioId:U.ID});
-  if(!r.ok){ document.getElementById('sesion-content').innerHTML=`<div class="empty"><div class="empty-icon">🎉</div><div class="empty-title">¡Sin sesión pendiente!</div><div class="empty-sub">No hay sesión programada para hoy.</div></div>`; return; }
+  if(!r.ok||!r.sesion){
+    document.getElementById('sesion-content').innerHTML=`<div class="empty"><div class="empty-icon">🏋️</div><div class="empty-title">${r.ok?'Sin sesión asignada':'Error cargando sesión'}</div><div class="empty-sub">${r.ok?(r.mensaje||'El coach debe asignarte un ciclo de entrenamiento.'):(r.error||'Intenta de nuevo.')}</div></div>`;
+    return;
+  }
   SESION=r.sesion;
   renderSesion();
 }
 
 function normEj(ej){
   // normaliza campos del backend v2 (snake_case) al formato interno
+  const tiempoSeg = Number(ej.tiempo_seg || ej.tiempoSeg || 0);
+  const nombre = ej.nombre || ej.Nombre || '';
+  const esTrote = nombre.toLowerCase().includes('trote');
   return {
-    nombre:     ej.nombre   || ej.Nombre    || '',
-    emoji:      ej.emoji    || (ej.es_libre?'🧘':'🏋️'),
+    nombre,
+    emoji:      ej.emoji    || (esTrote?'🏃':ej.es_libre?'🧘':'🏋️'),
     series:     Number(ej.series  || ej.Series   || 4),
     repsMin:    Number(ej.reps_min|| ej.repsMin  || ej.Reps_Min || 8),
     repsMax:    Number(ej.reps_max|| ej.repsMax  || ej.Reps_Max || 12),
@@ -798,6 +816,8 @@ function normEj(ej){
     descansoSeg:Number(ej.descanso || ej.descansoSeg || ej.Descanso_seg || 60),
     esCorporal: ej.es_libre===true || ej.esCorporal===true || ej.Es_Libre==='Si',
     videoUrl:   ej.video_url|| ej.Video_URL || '',
+    tiempoSeg,
+    esTrote,
   };
 }
 
@@ -820,12 +840,13 @@ function renderSesion(){
       return `<div class="ex-dot ${cls}"></div>`;
     }).join('');
     const todo=series.length>=ej.series;
-    const peso=ej.esCorporal?'Corporal':(ej.pesoSugerido>0?ej.pesoSugerido+'kg':'—');
+    const peso=ej.esTrote?`${Math.round(ej.tiempoSeg/60)} min`:ej.esCorporal?'Corporal':(ej.pesoSugerido>0?ej.pesoSugerido+'kg':'—');
+    const meta=ej.esTrote?`Trote continuo · ${Math.round(ej.tiempoSeg/60)} min`:`${ej.series}×${ej.repsMin}–${ej.repsMax} rep · ${Math.round(ej.descansoSeg/60)}min descanso`;
     html+=`<div class="ex-card ${todo?'done':''}" onclick="abrirSerie(${i})" id="ex-${i}">
       <div class="ex-icon">${ej.emoji}</div>
       <div class="ex-info">
         <div class="ex-name">${ej.nombre}</div>
-        <div class="ex-meta">${ej.series}×${ej.repsMin}–${ej.repsMax} rep · ${Math.round(ej.descansoSeg/60)}min descanso</div>
+        <div class="ex-meta">${meta}</div>
         <div class="ex-dots">${dotsHtml}</div>
       </div>
       <div class="ex-weight" style="${todo?'color:var(--success)':''}">${todo?'✓':peso}</div>
@@ -847,7 +868,15 @@ function abrirSerie(i){
   // dots
   const dots=Array.from({length:ej.series},(_,d)=>`<div class="ex-dot ${d<series.length?'done':d===series.length?'active':''}" style="width:10px;height:10px;"></div>`).join('');
   document.getElementById('serie-dots').innerHTML=dots;
-  // corporal vs peso
+  // trote vs corporal vs peso
+  if(ej.esTrote){
+    cerrarSheet('serie');
+    iniciarTimer(ej.tiempoSeg||180, 'Trote de cierre');
+    if(!SERIES_HOY[EJ_ACTIVO]) SERIES_HOY[EJ_ACTIVO]=[];
+    SERIES_HOY[EJ_ACTIVO].push({peso:'trote',reps:0,tiempo:ej.tiempoSeg});
+    renderSesion();
+    return;
+  }
   if(ej.esCorporal){
     document.getElementById('serie-peso').parentElement.style.display='none';
     document.getElementById('serie-reps').parentElement.style.display='none';
@@ -1224,7 +1253,11 @@ async function guardarRMs(userId){
   cerrarSheet('rm-edit');
   const r=await api('coachActualizarRMs',{usuarioId:userId,coachId:U.ID,rms});
   if(!r.ok) return toast(r.error,'error');
-  toast('RMs actualizados y plan regenerado','success');
+  toast('RMs actualizados ✓ El plan del alumno estará disponible','success');
+  // Si el coach es también el usuario activo, recargar su sesión
+  if(userId===U.ID){ await loadSesion(); await loadPlan(); }
+  // Recargar lista de usuarios para reflejar cambios
+  try{ COACH_USERS=[]; await loadCoach(); }catch(e){}
 }
 
 async function abrirAvanzarMes(userId){
