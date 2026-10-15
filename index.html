@@ -495,6 +495,36 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   </div>
 </div>
 
+<!-- Sheet: Crear coach (solo admin) -->
+<div class="sheet-overlay" id="ov-crear-coach" onclick="cerrarSheet('crear-coach')"></div>
+<div class="sheet" id="sheet-crear-coach">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <span class="sheet-title">👤 Nuevo coach</span>
+    <button class="sheet-close" onclick="cerrarSheet('crear-coach')">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="input-group">
+      <div class="field">
+        <label class="field-label">Nombre</label>
+        <input class="input" id="cc-nombre" type="text" placeholder="María"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Apellido</label>
+        <input class="input" id="cc-apellido" type="text" placeholder="González"/>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Correo institucional</label>
+      <input class="input" id="cc-email" type="email" placeholder="marias@uta.cl"/>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:12px;font-size:13px;color:var(--text2);margin-top:4px;">
+      Se generará una contraseña automática de 6 dígitos. El coach deberá cambiarla en su primer ingreso.
+    </div>
+    <button class="btn btn-primary" style="margin-top:16px;" onclick="crearCoach()">Crear coach</button>
+  </div>
+</div>
+
 <!-- Sheet: Editar usuario (coach) -->
 <div class="sheet-overlay" id="ov-edit-usuario" onclick="cerrarSheet('edit-usuario')"></div>
 <div class="sheet" id="sheet-edit-usuario">
@@ -1092,15 +1122,17 @@ async function loadCoach(){
     </div>
     <div class="section-header">
       <span class="section-title">Mis estudiantes</span>
-      <button class="btn-ghost btn-sm" onclick="abrirSheet('crear-user')">+ Nuevo</button>
+      <button class="btn-ghost btn-sm" onclick="abrirSheet('crear-user')">+ Estudiante</button>
+      ${U.Rol==='admin'?`<button class="btn-ghost btn-sm" onclick="abrirSheet('crear-coach')" style="margin-left:4px;">+ Coach</button>`:''}
     </div>
   `;
   if(COACH_USERS.length===0){
-    html+=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Sin estudiantes aún</div><div class="empty-sub">Crea el primero con el botón + Nuevo</div></div>`;
+    html+=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Sin estudiantes aún</div><div class="empty-sub">Crea el primero con el botón + Estudiante</div></div>`;
   } else {
     COACH_USERS.forEach(u=>{
       const initials=(u.nombre[0]+(u.apellido?u.apellido[0]:'')).toUpperCase();
       const pct=u.progreso||0;
+      const esAdmin=U.Rol==='admin';
       html+=`<div class="user-card" onclick="verDetalle('${u.id}')">
         <div class="user-avatar">${initials}</div>
         <div class="user-info">
@@ -1112,7 +1144,7 @@ async function loadCoach(){
           </div>
           <div style="display:flex;gap:6px;margin-top:8px;" onclick="event.stopPropagation()">
             <button class="btn btn-secondary" style="flex:1;padding:6px 0;font-size:12px;" onclick="abrirEditUsuario('${u.id}')">✏️ Editar</button>
-            <button class="btn" style="flex:1;padding:6px 0;font-size:12px;background:var(--danger-l);color:var(--danger);border:1px solid var(--danger);" onclick="confirmarEliminarUsuario('${u.id}','${u.nombre} ${u.apellido||''}')">🗑️ Eliminar</button>
+            ${esAdmin?`<button class="btn" style="flex:1;padding:6px 0;font-size:12px;background:var(--danger-l);color:var(--danger);border:1px solid var(--danger);" onclick="confirmarEliminarUsuario('${u.id}','${u.nombre} ${u.apellido||''}')">🗑️ Eliminar</button>`:''}
           </div>
         </div>
       </div>`;
@@ -1510,6 +1542,21 @@ async function crearUsuario(){
   if(!r.ok) return toast(r.error,'error');
   cerrarSheet('crear-user');
   toast(`Usuario creado. Contraseña: ${r.claveGenerada}`,'success');
+  COACH_USERS=[];
+  loadCoach();
+}
+
+async function crearCoach(){
+  const nombre=document.getElementById('cc-nombre').value.trim();
+  const apellido=document.getElementById('cc-apellido').value.trim();
+  const email=document.getElementById('cc-email').value.trim();
+  if(!nombre||!email) return toast('Nombre y correo son obligatorios','error');
+  const r=await api('crearUsuario',{coachId:U.ID,nombre,apellido,email,rol:'coach'});
+  if(!r.ok) return toast(r.error||'Error al crear coach','error');
+  cerrarSheet('crear-coach');
+  // Limpiar campos
+  ['cc-nombre','cc-apellido','cc-email'].forEach(id=>document.getElementById(id).value='');
+  toast(`Coach creado. Contraseña: ${r.claveGenerada}`,'success');
   COACH_USERS=[];
   loadCoach();
 }
