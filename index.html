@@ -1042,7 +1042,7 @@ async function verDetalle(userId){
     <div class="stats-row" style="margin-top:0;">
       <div class="stat-box"><div class="stat-box-val">${r.sesionesCompletadas||0}</div><div class="stat-box-lbl">Sesiones</div></div>
       <div class="stat-box"><div class="stat-box-val">${pct}%</div><div class="stat-box-lbl">Progreso</div></div>
-      <div class="stat-box"><div class="stat-box-val">${r.feedbackReciente?.()?.[0]?.rpe??'—':u.rpePromedio?.toFixed(1)??'—'}</div><div class="stat-box-lbl">Último RPE</div></div>
+      <div class="stat-box"><div class="stat-box-val">${(fb&&fb[0]&&fb[0].rpe)||'—'}</div><div class="stat-box-lbl">Último RPE</div></div>
     </div>
     <div style="margin:0 16px 12px;">
       <div class="prog-wrap"><div class="prog-fill" style="width:${pct}%"></div></div>
